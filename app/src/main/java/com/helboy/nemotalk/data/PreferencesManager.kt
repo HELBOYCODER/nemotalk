@@ -14,10 +14,14 @@ class PreferencesManager(context: Context) {
         get() = prefs.getString(KEY_MODEL, "nvidia/nemotron-4-340b-instruct") ?: "nvidia/nemotron-4-340b-instruct"
         set(value) = prefs.edit().putString(KEY_MODEL, value).apply()
 
+    var responseLanguage: String
+        get() = prefs.getString(KEY_RESPONSE_LANG, "fa") ?: "fa"
+        set(value) = prefs.edit().putString(KEY_RESPONSE_LANG, value).apply()
+
     var systemPrompt: String
         get() = prefs.getString(
             KEY_SYSTEM_PROMPT,
-            "You are NeMoTalk, an intelligent, helpful and concise AI assistant powered by NVIDIA NeMo and Nemotron models. When spoken to in Persian, reply naturally and warmly in Persian. When spoken to in English, reply in English. Keep voice responses natural and focused."
+            "شما دستیار صوتی و هوشمند آوانمو (NeMoTalk) مجهز به مدل‌های NVIDIA NeMo هستید. وظیفه شما پاسخگویی دقیق، دلنشین و شیوا به زبان فارسی است. همواره به زبان فارسی روان پاسخ دهید مگر اینکه کاربر صریحاً به زبان دیگری صحبت کند. در مکالمات صوتی، پاسخ‌ها را رسا، خوش‌آهنگ و موجز بیان کنید."
         ) ?: ""
         set(value) = prefs.edit().putString(KEY_SYSTEM_PROMPT, value).apply()
 
@@ -40,6 +44,7 @@ class PreferencesManager(context: Context) {
     companion object {
         private const val KEY_API_KEY = "key_api_key"
         private const val KEY_MODEL = "key_model"
+        private const val KEY_RESPONSE_LANG = "key_response_lang"
         private const val KEY_SYSTEM_PROMPT = "key_system_prompt"
         private const val KEY_AUTO_SPEAK = "key_auto_speak"
         private const val KEY_SPEECH_LANG = "key_speech_lang"

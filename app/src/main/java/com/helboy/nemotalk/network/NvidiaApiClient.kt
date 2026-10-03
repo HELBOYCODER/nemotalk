@@ -45,7 +45,8 @@ class NvidiaApiClient {
         apiKey: String,
         model: String,
         messages: List<ChatMessage>,
-        systemPrompt: String
+        systemPrompt: String,
+        responseLanguage: String = "fa"
     ): Result<SendMessageResult> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
@@ -53,8 +54,18 @@ class NvidiaApiClient {
             )
         }
 
+        val effectivePrompt = when (responseLanguage) {
+            "fa" -> if (systemPrompt.isNotBlank()) {
+                "$systemPrompt\n\n[دستور قطعی: پاسخ شما باید حتماً و ۱۰۰٪ به زبان فارسی روان، سلیس و دلنشین باشد. به هیچ عنوان انگلیسی پاسخ ندهید.]"
+            } else {
+                "شما دستیار صوتی و هوشمند آوانمو هستید. تمام پاسخ‌های شما باید ۱۰۰٪ به زبان فارسی شیوا و روان باشد."
+            }
+            "en" -> "$systemPrompt\n\n[Instruction: Reply strictly in English.]"
+            else -> systemPrompt
+        }
+
         // 1. Try requested model first
-        val firstAttempt = executeRequest(apiKey, model, messages, systemPrompt)
+        val firstAttempt = executeRequest(apiKey, model, messages, effectivePrompt)
         if (firstAttempt.isSuccess) {
             val (content, latency) = firstAttempt.getOrThrow()
             return@withContext Result.success(
@@ -85,7 +96,7 @@ class NvidiaApiClient {
         for (fallbackModel in fallbackModels) {
             if (fallbackModel == model) continue
 
-            val fallbackAttempt = executeRequest(apiKey, fallbackModel, messages, systemPrompt)
+            val fallbackAttempt = executeRequest(apiKey, fallbackModel, messages, effectivePrompt)
             if (fallbackAttempt.isSuccess) {
                 val (content, latency) = fallbackAttempt.getOrThrow()
                 return@withContext Result.success(

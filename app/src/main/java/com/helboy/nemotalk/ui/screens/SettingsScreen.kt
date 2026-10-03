@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -53,6 +54,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -65,15 +67,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.helboy.nemotalk.data.PreferencesManager
 import com.helboy.nemotalk.model.NvidiaModel
 import com.helboy.nemotalk.network.NvidiaApiClient
+import com.helboy.nemotalk.speech.TextToSpeechHelper
 import com.helboy.nemotalk.ui.theme.DarkBackground
 import com.helboy.nemotalk.ui.theme.DarkBorder
 import com.helboy.nemotalk.ui.theme.DarkSurface
@@ -92,6 +95,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     prefs: PreferencesManager,
     apiClient: NvidiaApiClient,
+    ttsHelper: TextToSpeechHelper,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -103,11 +107,14 @@ fun SettingsScreen(
     var isApiKeyVisible by remember { mutableStateOf(false) }
 
     var selectedModelId by remember { mutableStateOf(prefs.selectedModel) }
+    var responseLanguage by remember { mutableStateOf(prefs.responseLanguage) }
     var autoSpeak by remember { mutableStateOf(prefs.autoSpeak) }
     var speechLanguage by remember { mutableStateOf(prefs.speechLanguage) }
     var speechRate by remember { mutableFloatStateOf(prefs.speechRate) }
     var speechPitch by remember { mutableFloatStateOf(prefs.speechPitch) }
     var systemPrompt by remember { mutableStateOf(prefs.systemPrompt) }
+
+    val hasPersianVoice by ttsHelper.hasPersianVoice.collectAsState()
 
     var isTestingConnection by remember { mutableStateOf(false) }
     var testResultText by remember { mutableStateOf<String?>(null) }
@@ -155,7 +162,7 @@ fun SettingsScreen(
                     fontSize = 18.sp
                 )
                 Text(
-                    text = "پیکربندی کلید ان‌ویدیا، مدل و خروجی صدا",
+                    text = "پیکربندی هوش مصنوعی، صدای فارسی و کلید اختصاصی",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted,
                     fontSize = 12.sp
@@ -230,7 +237,7 @@ fun SettingsScreen(
                             result.fold(
                                 onSuccess = { (workingModel, latency) ->
                                     isTestSuccess = true
-                                    testResultText = "اتصال موفق بود! مدل فعال: $workingModel (پینگ: ${latency}ms)"
+                                    testResultText = "اتصال موفق! مدل فعال: $workingModel (پینگ: ${latency}ms)"
                                     if (workingModel != selectedModelId) {
                                         selectedModelId = workingModel
                                         prefs.selectedModel = workingModel
@@ -312,7 +319,186 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // SECTION 2: MODEL SELECTION
+        // SECTION 2: AI OUTPUT LANGUAGE (فارسی / انگلیسی)
+        SettingsCard(title = "زبان پاسخ‌دهی هوش مصنوعی", icon = Icons.Default.VolumeUp) {
+            Text(
+                text = "پاسخ‌ها و مکالمات صوتی به این زبان تولید و خوانده می‌شوند:",
+                color = TextSecondary,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val languages = listOf("fa" to "🇮🇷 همیشه فارسی", "auto" to "🌐 هوشمند", "en" to "🇺🇸 انگلیسی")
+                languages.forEach { (code, label) ->
+                    val isSelected = (responseLanguage == code)
+                    Surface(
+                        onClick = {
+                            responseLanguage = code
+                            prefs.responseLanguage = code
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp)),
+                        color = if (isSelected) NvidiaGreen else DarkSurfaceElevated,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaNeon else DarkBorder)
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) DarkBackground else TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 9.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // SECTION 3: VOICE & TTS SETTINGS
+        SettingsCard(title = "موتور صوتی و خوانش فارسی (Voice & TTS)", icon = Icons.Default.VolumeUp) {
+            // Auto Speak Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "پخش خودکار صوتی پاسخ‌ها",
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "پاسخ نِمو به محض دریافت به صورت صوتی خوانده شود",
+                        color = TextMuted,
+                        fontSize = 11.sp
+                    )
+                }
+                Switch(
+                    checked = autoSpeak,
+                    onCheckedChange = {
+                        autoSpeak = it
+                        prefs.autoSpeak = it
+                    },
+                    colors = SwitchDefaults.colors(checkedThumbColor = NvidiaNeon, checkedTrackColor = NvidiaDarkGreen)
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DarkBorder)
+
+            // Persian Voice Status and Google Speech Setup
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (hasPersianVoice) Color(0xFF132B1A) else Color(0xFF261D12))
+                    .border(1.dp, if (hasPersianVoice) SuccessGreen.copy(alpha = 0.5f) else Color(0xFFFFB300).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (hasPersianVoice) Icons.Default.CheckCircle else Icons.Default.VolumeUp,
+                    contentDescription = null,
+                    tint = if (hasPersianVoice) SuccessGreen else Color(0xFFFFB300),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (hasPersianVoice) "صدای فارسی گوگل: فعال و آماده ✅" else "صدای فارسی گوگل: بررسی یا فعال‌سازی",
+                        color = if (hasPersianVoice) SuccessGreen else Color(0xFFFFD54F),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (hasPersianVoice) "پاسخ‌ها با صدای طبیعی و بدون درنگ خوانده می‌شوند." else "برای کیفیت استودیویی، صدای فارسی را در تنظیمات گوگل فعال کنید.",
+                        color = TextMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = { ttsHelper.openTtsSettings() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = NvidiaNeon),
+                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(NvidiaGreen))
+            ) {
+                Icon(imageVector = Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("تنظیمات موتور صوتی گوگل (دانلود دیتای فارسی)", fontSize = 12.sp)
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DarkBorder)
+
+            // Microphone Recognition Language
+            Text(text = "زبان تشخیص گفتار میکروفون:", color = TextSecondary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val languages = listOf("fa-IR" to "فارسی", "en-US" to "English", "auto" to "خودکار")
+                languages.forEach { (code, label) ->
+                    val isSelected = (speechLanguage == code)
+                    Surface(
+                        onClick = {
+                            speechLanguage = code
+                            prefs.speechLanguage = code
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp)),
+                        color = if (isSelected) NvidiaGreen else DarkSurfaceElevated,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaNeon else DarkBorder)
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) DarkBackground else TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Speech Rate
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "سرعت خوانش صوتی:", color = TextSecondary, fontSize = 12.sp)
+                Text(text = "${String.format("%.1f", speechRate)}x", color = NvidiaGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = speechRate,
+                onValueChange = {
+                    speechRate = it
+                    prefs.speechRate = it
+                },
+                valueRange = 0.6f..1.6f,
+                colors = SliderDefaults.colors(thumbColor = NvidiaNeon, activeTrackColor = NvidiaGreen)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // SECTION 4: MODEL SELECTION
         SettingsCard(title = "مدل‌های هوش مصنوعی ان‌ویدیا", icon = Icons.Default.Speed) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -410,96 +596,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // SECTION 3: VOICE & TTS SETTINGS
-        SettingsCard(title = "تنظیمات گفتار و صدا (Voice & TTS)", icon = Icons.Default.VolumeUp) {
-            // Auto Speak Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "پخش خودکار صوتی پاسخ‌ها",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "پاسخ مدل به محض دریافت توسط موتور صوتی خوانده شود",
-                        color = TextMuted,
-                        fontSize = 11.sp
-                    )
-                }
-                Switch(
-                    checked = autoSpeak,
-                    onCheckedChange = {
-                        autoSpeak = it
-                        prefs.autoSpeak = it
-                    },
-                    colors = SwitchDefaults.colors(checkedThumbColor = NvidiaNeon, checkedTrackColor = NvidiaDarkGreen)
-                )
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DarkBorder)
-
-            // Language Selector
-            Text(text = "زبان تشخیص گفتار میکروفون:", color = TextSecondary, fontSize = 12.sp)
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                val languages = listOf("fa-IR" to "فارسی", "en-US" to "English", "auto" to "خودکار")
-                languages.forEach { (code, label) ->
-                    val isSelected = (speechLanguage == code)
-                    Surface(
-                        onClick = {
-                            speechLanguage = code
-                            prefs.speechLanguage = code
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp)),
-                        color = if (isSelected) NvidiaGreen else DarkSurfaceElevated,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaNeon else DarkBorder)
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (isSelected) DarkBackground else TextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Speech Rate
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(text = "سرعت خوانش صوتی:", color = TextSecondary, fontSize = 12.sp)
-                Text(text = "${String.format("%.1f", speechRate)}x", color = NvidiaGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-            Slider(
-                value = speechRate,
-                onValueChange = {
-                    speechRate = it
-                    prefs.speechRate = it
-                },
-                valueRange = 0.6f..1.6f,
-                colors = SliderDefaults.colors(thumbColor = NvidiaNeon, activeTrackColor = NvidiaGreen)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // SECTION 4: SYSTEM PROMPT
+        // SECTION 5: SYSTEM PROMPT
         SettingsCard(title = "دستور سیستمی (System Prompt)", icon = Icons.Default.Speed) {
             OutlinedTextField(
                 value = systemPrompt,

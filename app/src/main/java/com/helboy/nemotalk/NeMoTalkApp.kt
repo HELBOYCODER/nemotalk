@@ -77,7 +77,7 @@ fun NeMoTalkApp() {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Function to send message to NVIDIA NeMo API with auto-fallback
+    // Function to send message to NVIDIA NeMo API with Persian enforcement & auto-fallback
     fun handleSendMessage(userText: String, isFromVoice: Boolean = false) {
         if (userText.isBlank()) return
 
@@ -100,7 +100,8 @@ fun NeMoTalkApp() {
                 apiKey = prefs.apiKey,
                 model = activeModelId,
                 messages = messages,
-                systemPrompt = prefs.systemPrompt
+                systemPrompt = prefs.systemPrompt,
+                responseLanguage = prefs.responseLanguage
             )
 
             isThinking = false
@@ -132,6 +133,7 @@ fun NeMoTalkApp() {
                             text = aiText,
                             speechRate = prefs.speechRate,
                             speechPitch = prefs.speechPitch,
+                            forcePersian = (prefs.responseLanguage == "fa" || ttsHelper.containsPersianCharacters(aiText)),
                             onDone = {
                                 currentlySpeakingId = null
                                 // If still in Voice HUD, re-listen for continuous conversation!
@@ -224,6 +226,7 @@ fun NeMoTalkApp() {
                                 text = msg.content,
                                 speechRate = prefs.speechRate,
                                 speechPitch = prefs.speechPitch,
+                                forcePersian = (prefs.responseLanguage == "fa" || ttsHelper.containsPersianCharacters(msg.content)),
                                 onDone = { currentlySpeakingId = null }
                             )
                         },
@@ -274,6 +277,7 @@ fun NeMoTalkApp() {
                     SettingsScreen(
                         prefs = prefs,
                         apiClient = apiClient,
+                        ttsHelper = ttsHelper,
                         onBack = {
                             activeModelId = prefs.selectedModel
                             currentScreen = AppScreen.CHAT
