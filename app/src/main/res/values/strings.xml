@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">NeMoTalk</string>
+    <string name="app_subtitle">چت و مکالمه صوتی با هوش مصنوعی ان‌ویدیا</string>
+    <string name="api_key_hint">کلید API ان‌ویدیا (nvapi-...)</string>
+    <string name="model_hint">انتخاب مدل NVIDIA</string>
+    <string name="voice_mode_title">حالت مکالمه صوتی زنده</string>
+    <string name="listening_text">در حال شنیدن صدای شما...</string>
+    <string name="thinking_text">نِمو در حال اندیشیدن...</string>
+    <string name="speaking_text">در حال پاسخ صوتی...</string>
+    <string name="settings_title">تنظیمات NeMoTalk</string>
+</resources>

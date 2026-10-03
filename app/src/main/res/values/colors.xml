@@ -1,0 +1,11 @@
+<resources>
+    <!-- NVIDIA Brand Colors -->
+    <color name="nvidia_green">#76B900</color>
+    <color name="nvidia_green_light">#00E676</color>
+    <color name="nvidia_green_dark">#4C7A00</color>
+    <color name="dark_background">#0D1117</color>
+    <color name="dark_surface">#161B22</color>
+    <color name="dark_border">#30363D</color>
+    <color name="text_primary">#F0F6FC</color>
+    <color name="text_secondary">#8B949E</color>
+</resources>
