@@ -11,7 +11,7 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putString(KEY_API_KEY, value.trim()).apply()
 
     var selectedModel: String
-        get() = prefs.getString(KEY_MODEL, "nvidia/llama-3.1-nemotron-70b-instruct") ?: "nvidia/llama-3.1-nemotron-70b-instruct"
+        get() = prefs.getString(KEY_MODEL, "nvidia/nemotron-4-340b-instruct") ?: "nvidia/nemotron-4-340b-instruct"
         set(value) = prefs.edit().putString(KEY_MODEL, value).apply()
 
     var systemPrompt: String

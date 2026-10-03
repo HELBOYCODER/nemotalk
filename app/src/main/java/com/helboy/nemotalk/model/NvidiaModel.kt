@@ -9,33 +9,45 @@ data class NvidiaModel(
     companion object {
         val ALL_MODELS = listOf(
             NvidiaModel(
-                id = "nvidia/llama-3.1-nemotron-70b-instruct",
-                displayName = "Nemotron 70B (پیش‌فرض)",
-                description = "بهترین مدل گفتگوی چندمنظوره با استدلال قدرتمند و بهینه‌سازی NeMo",
+                id = "nvidia/nemotron-4-340b-instruct",
+                displayName = "Nemotron 340B (پرچمدار)",
+                description = "مدل پرچمدار و رسمی NeMo ان‌ویدیا — فعال در تمام حساب‌های رسمی build.nvidia.com",
                 isRecommended = true
             ),
             NvidiaModel(
-                id = "nvidia/nemotron-4-340b-instruct",
-                displayName = "Nemotron 340B (قدرتمندترین)",
-                description = "مدل عظیم ۳۴۰ میلیارد پارامتری ان‌ویدیا برای استدلال بسیار پیچیده",
-                isRecommended = false
-            ),
-            NvidiaModel(
-                id = "nvidia/nemotron-mini-4b-instruct",
-                displayName = "Nemotron Mini 4B (سریع‌ترین)",
-                description = "مدل سبک و فوق‌العاده سریع با حداقل تاخیر برای مکالمه صوتی بلادرنگ",
-                isRecommended = false
+                id = "nvidia/nemotron-3-super-120b-a12b",
+                displayName = "Nemotron Super 120B",
+                description = "مدل فوق‌سریع ۱۲۰ میلیارد پارامتری ان‌ویدیا با کمترین تاخیر برای مکالمه صوتی",
+                isRecommended = true
             ),
             NvidiaModel(
                 id = "meta/llama-3.3-70b-instruct",
                 displayName = "Llama 3.3 70B",
-                description = "مدل پرچمدار متا با تسلط عالی بر زبان فارسی و چندزبانه",
+                description = "مدل محبوب ۷۰ میلیاردی با درک استثنایی زبان فارسی و استدلال روان",
                 isRecommended = false
             ),
             NvidiaModel(
-                id = "deepseek-ai/deepseek-r1",
-                displayName = "DeepSeek R1",
-                description = "مدل تفکر عمیق و ریاضیات استنتاجی میزبانی‌شده روی کلاود ان‌ویدیا",
+                id = "meta/llama-3.2-11b-vision-instruct",
+                displayName = "Llama 3.2 11B",
+                description = "مدل سبک و سریع یازده میلیاردی با پاسخ‌های آنی",
+                isRecommended = false
+            ),
+            NvidiaModel(
+                id = "google/gemma-3-12b-it",
+                displayName = "Google Gemma 3 12B",
+                description = "مدل نسل سوم گوگل میزبانی‌شده روی کلاود ان‌ویدیا",
+                isRecommended = false
+            ),
+            NvidiaModel(
+                id = "openai/gpt-oss-20b",
+                displayName = "GPT-OSS 20B",
+                description = "مدل اوپن‌سورس بهینه‌سازی‌شده روی کلاود ان‌ویدیا",
+                isRecommended = false
+            ),
+            NvidiaModel(
+                id = "nvidia/llama-3.1-nemotron-70b-instruct",
+                displayName = "Nemotron 70B",
+                description = "مدل کلاسیک نموترون ان‌ویدیا",
                 isRecommended = false
             )
         )

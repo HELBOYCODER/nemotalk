@@ -59,6 +59,8 @@ fun NeMoTalkApp() {
     val partialSpokenText by speechHelper.partialText.collectAsState()
     val isSpeaking by ttsHelper.isSpeaking.collectAsState()
 
+    var activeModelId by remember { mutableStateOf(prefs.selectedModel) }
+
     // Permission launcher for Microphone
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -75,7 +77,7 @@ fun NeMoTalkApp() {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Function to send message to NVIDIA NeMo API
+    // Function to send message to NVIDIA NeMo API with auto-fallback
     fun handleSendMessage(userText: String, isFromVoice: Boolean = false) {
         if (userText.isBlank()) return
 
@@ -84,7 +86,7 @@ fun NeMoTalkApp() {
 
         if (prefs.apiKey.isBlank()) {
             val errorMsg = ChatMessage(
-                content = "کلید API ان‌ویدیا تنظیم نشده است. لطفاً از طریق آیکون تنظیمات در بالای صفحه، کلید رایگان خود را از build.nvidia.com وارد کنید.",
+                content = "کلید API ان‌ویدیا تنظیم نشده است. لطفاً از طریق آیکون تنظیمات (⚙️) در بالای صفحه، کلید رایگان خود را از build.nvidia.com وارد کنید.",
                 isUser = false,
                 isError = true
             )
@@ -96,18 +98,28 @@ fun NeMoTalkApp() {
         coroutineScope.launch {
             val result = apiClient.sendMessage(
                 apiKey = prefs.apiKey,
-                model = prefs.selectedModel,
+                model = activeModelId,
                 messages = messages,
                 systemPrompt = prefs.systemPrompt
             )
 
             isThinking = false
             result.fold(
-                onSuccess = { (aiText, latency) ->
+                onSuccess = { sendResult ->
+                    val aiText = sendResult.content
+                    val latency = sendResult.latencyMs
+                    val usedModel = sendResult.modelUsed
+
+                    // If auto-fallback triggered, update active model smoothly
+                    if (sendResult.wasFallback) {
+                        activeModelId = usedModel
+                        prefs.selectedModel = usedModel
+                    }
+
                     val aiMessage = ChatMessage(
                         content = aiText,
                         isUser = false,
-                        modelUsed = prefs.selectedModel,
+                        modelUsed = usedModel,
                         latencyMs = latency
                     )
                     messages.add(aiMessage)
@@ -188,7 +200,11 @@ fun NeMoTalkApp() {
                         rmsLevel = rmsLevel,
                         currentlySpeakingId = currentlySpeakingId,
                         hasApiKey = prefs.apiKey.isNotBlank(),
-                        selectedModelId = prefs.selectedModel,
+                        selectedModelId = activeModelId,
+                        onModelChange = { newModelId ->
+                            activeModelId = newModelId
+                            prefs.selectedModel = newModelId
+                        },
                         onSendMessage = { text -> handleSendMessage(text, isFromVoice = false) },
                         onVoiceHudOpen = {
                             currentScreen = AppScreen.VOICE_HUD
@@ -258,7 +274,10 @@ fun NeMoTalkApp() {
                     SettingsScreen(
                         prefs = prefs,
                         apiClient = apiClient,
-                        onBack = { currentScreen = AppScreen.CHAT }
+                        onBack = {
+                            activeModelId = prefs.selectedModel
+                            currentScreen = AppScreen.CHAT
+                        }
                     )
                 }
             }

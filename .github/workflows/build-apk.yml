@@ -34,26 +34,26 @@ jobs:
       - name: Copy and rename APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk dist/NeMoTalk-1.0.0.apk
+          cp app/build/outputs/apk/release/*.apk dist/NeMoTalk-1.1.0.apk
           ls -la dist/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NeMoTalk-1.0.0-APK
-          path: dist/NeMoTalk-1.0.0.apk
+          name: NeMoTalk-1.1.0-APK
+          path: dist/NeMoTalk-1.1.0.apk
           retention-days: 90
 
       - name: Create or Update GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="v1.0.0"
-          NOTES="NeMoTalk v1.0.0 — آوانمو: چت صوتی و متنی هوشمند با مدل‌های NVIDIA NeMo و Nemotron"
+          TAG_NAME="v1.1.0"
+          NOTES="NeMoTalk v1.1.0 — آوانمو: بازطراحی کامل ریسپانسیو و بهینه‌سازی موبایل + زنجیره خودکار Fallback برای مدل‌های ان‌ویدیا و رفع ارور ۴۰۴"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME already exists, uploading asset..."
-            gh release upload "$TAG_NAME" dist/NeMoTalk-1.0.0.apk --clobber
+            gh release upload "$TAG_NAME" dist/NeMoTalk-1.1.0.apk --clobber
           else
             echo "Creating new release $TAG_NAME..."
-            gh release create "$TAG_NAME" dist/NeMoTalk-1.0.0.apk --title "NeMoTalk v1.0.0 — آوانمو" --notes "$NOTES"
+            gh release create "$TAG_NAME" dist/NeMoTalk-1.1.0.apk --title "NeMoTalk v1.1.0 — آوانمو" --notes "$NOTES"
           fi

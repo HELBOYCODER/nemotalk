@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -45,6 +48,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -108,24 +112,29 @@ fun SettingsScreen(
     var testResultText by remember { mutableStateOf<String?>(null) }
     var isTestSuccess by remember { mutableStateOf(false) }
 
+    var isFetchingModels by remember { mutableStateOf(false) }
+    var liveModelsList by remember { mutableStateOf<List<String>>(emptyList()) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(DarkBackground)
-            .padding(16.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp)
             .verticalScroll(scrollState)
     ) {
-        // Header
+        // TOP HEADER
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
+                .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = onBack,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .clip(CircleShape)
                     .background(DarkSurfaceElevated)
             ) {
@@ -141,25 +150,27 @@ fun SettingsScreen(
                     text = "تنظیمات NeMoTalk",
                     style = MaterialTheme.typography.titleLarge,
                     color = TextPrimary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
                 )
                 Text(
-                    text = "پیکربندی کلید، مدل‌ها و موتور صوتی",
+                    text = "پیکربندی کلید ان‌ویدیا، مدل و خروجی صدا",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted
+                    color = TextMuted,
+                    fontSize = 12.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // SECTION 1: NVIDIA API KEY
         SettingsCard(title = "کلید اختصاصی NVIDIA (رایگان)", icon = Icons.Default.Key) {
             Text(
-                text = "کلید API ان‌ویدیا به شما امکان مکالمه مستقیم و پرسرعت با مدل‌های NeMo و Nemotron را می‌دهد.",
+                text = "کلید API شما برای مکالمه مستقیم با سرورهای هوش مصنوعی ان‌ویدیا استفاده می‌شود.",
                 color = TextSecondary,
-                fontSize = 13.sp,
-                lineHeight = 18.sp
+                fontSize = 12.sp,
+                lineHeight = 17.sp
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -195,35 +206,18 @@ fun SettingsScreen(
                 singleLine = true
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons: Get Key & Test Key
-            Row(
+            // Action Buttons
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = {
-                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://build.nvidia.com/"))
-                        context.startActivity(browserIntent)
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NvidiaNeon),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(NvidiaGreen))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.OpenInNew,
-                        contentDescription = "لینک",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("دریافت رایگان کلید", fontSize = 12.sp)
-                }
-
+                // Test Connection Button
                 Button(
                     onClick = {
                         if (apiKey.isBlank()) {
-                            testResultText = "لطفاً ابتدا کلید را وارد کنید."
+                            testResultText = "لطفاً ابتدا کلید API را وارد کنید."
                             isTestSuccess = false
                             return@Button
                         }
@@ -233,54 +227,75 @@ fun SettingsScreen(
                             val result = apiClient.testConnection(apiKey, selectedModelId)
                             isTestingConnection = false
                             result.fold(
-                                onSuccess = { latency ->
+                                onSuccess = { (workingModel, latency) ->
                                     isTestSuccess = true
-                                    testResultText = "اتصال موفق بود! پینگ: ${latency}ms"
+                                    testResultText = "اتصال موفق بود! مدل فعال: $workingModel (پینگ: ${latency}ms)"
+                                    if (workingModel != selectedModelId) {
+                                        selectedModelId = workingModel
+                                        prefs.selectedModel = workingModel
+                                    }
                                 },
                                 onFailure = { error ->
                                     isTestSuccess = false
-                                    testResultText = "خطا در اتصال: ${error.localizedMessage}"
+                                    testResultText = error.localizedMessage ?: "خطا در اتصال به سرور ان‌ویدیا"
                                 }
                             )
                         }
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = NvidiaGreen, contentColor = DarkBackground),
                     enabled = !isTestingConnection
                 ) {
                     if (isTestingConnection) {
                         CircularProgressIndicator(
                             color = DarkBackground,
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("در حال بررسی اتصال...", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     } else {
-                        Icon(
-                            imageVector = Icons.Default.Speed,
-                            contentDescription = "تست",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("تست اتصال", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(imageVector = Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("تست اتصال به سرور ان‌ویدیا", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+
+                // Get Free Key Button
+                OutlinedButton(
+                    onClick = {
+                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://build.nvidia.com/"))
+                        context.startActivity(browserIntent)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NvidiaNeon),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(NvidiaGreen))
+                ) {
+                    Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("دریافت رایگان کلید API از build.nvidia.com", fontSize = 12.sp)
                 }
             }
 
             // Test Result Banner
             if (testResultText != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (isTestSuccess) Color(0xFF132B1A) else Color(0xFF331414))
                         .border(1.dp, if (isTestSuccess) SuccessGreen else ErrorRed, RoundedCornerShape(8.dp))
-                        .padding(8.dp),
+                        .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = if (isTestSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
-                        contentDescription = "نتیجه",
+                        contentDescription = null,
                         tint = if (isTestSuccess) SuccessGreen else ErrorRed,
                         modifier = Modifier.size(18.dp)
                     )
@@ -292,103 +307,110 @@ fun SettingsScreen(
                     )
                 }
             }
-
-            // Guide box
-            Spacer(modifier = Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF0F1724))
-                    .border(1.dp, DarkBorder, RoundedCornerShape(8.dp))
-                    .padding(10.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "💡 راهنمای دریافت کلید رایگان:",
-                        color = NvidiaGreen,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "۱. دکمه دریافت کلید را بزنید و در سایت build.nvidia.com ثبت‌نام کنید.\n۲. روی دکمه Get API Key کلیک کنید.\n۳. کلید nvapi-... صادر شده را کپی کرده و اینجا قرار دهید (۱۰۰۰ کردیت رایگان اعطا می‌شود).",
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    )
-                }
-            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // SECTION 2: MODEL SELECTION
-        SettingsCard(title = "انتخاب مدل هوش مصنوعی (NVIDIA Model)", icon = Icons.Default.Speed) {
+        SettingsCard(title = "مدل‌های هوش مصنوعی ان‌ویدیا", icon = Icons.Default.Speed) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "مدل فعال برای مکالمه صوتی:",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+
+                // Refresh Models Button
+                if (apiKey.isNotBlank()) {
+                    IconButton(
+                        onClick = {
+                            isFetchingModels = true
+                            coroutineScope.launch {
+                                val result = apiClient.fetchAvailableModels(apiKey)
+                                isFetchingModels = false
+                                result.onSuccess { liveModelsList = it }
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (isFetchingModels) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = NvidiaGreen, strokeWidth = 2.dp)
+                        } else {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "بروزرسانی", tint = NvidiaGreen, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             NvidiaModel.ALL_MODELS.forEach { model ->
                 val isSelected = (model.id == selectedModelId)
-                Row(
+                Surface(
+                    onClick = {
+                        selectedModelId = model.id
+                        prefs.selectedModel = model.id
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) Color(0xFF132218) else DarkSurface)
-                        .border(
-                            width = 1.dp,
-                            color = if (isSelected) NvidiaGreen else DarkBorder,
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .clickable {
-                            selectedModelId = model.id
-                            prefs.selectedModel = model.id
-                        }
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(vertical = 3.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    color = if (isSelected) Color(0xFF132218) else DarkSurfaceElevated,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaGreen else DarkBorder)
                 ) {
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = {
-                            selectedModelId = model.id
-                            prefs.selectedModel = model.id
-                        },
-                        colors = RadioButtonDefaults.colors(selectedColor = NvidiaGreen, unselectedColor = TextSecondary)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = model.displayName,
-                                color = if (isSelected) NvidiaNeon else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 14.sp
-                            )
-                            if (model.isRecommended) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(NvidiaGreen.copy(alpha = 0.2f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text("پیشنهادی", color = NvidiaGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = {
+                                selectedModelId = model.id
+                                prefs.selectedModel = model.id
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = NvidiaGreen, unselectedColor = TextSecondary)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = model.displayName,
+                                    color = if (isSelected) NvidiaNeon else TextPrimary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 13.sp
+                                )
+                                if (model.isRecommended) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(NvidiaGreen.copy(alpha = 0.2f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("فعال و سریع", color = NvidiaGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
+                            Text(
+                                text = model.description,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
                         }
-                        Text(
-                            text = model.description,
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // SECTION 3: VOICE & SPEECH SETTINGS
-        SettingsCard(title = "تنظیمات صوت و گفتار (Voice & TTS)", icon = Icons.Default.VolumeUp) {
+        // SECTION 3: VOICE & TTS SETTINGS
+        SettingsCard(title = "تنظیمات گفتار و صدا (Voice & TTS)", icon = Icons.Default.VolumeUp) {
             // Auto Speak Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -403,7 +425,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "پاسخ مدل به محض دریافت به صورت صوتی خوانده شود",
+                        text = "پاسخ مدل به محض دریافت توسط موتور صوتی خوانده شود",
                         color = TextMuted,
                         fontSize = 11.sp
                     )
@@ -425,34 +447,35 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val languages = listOf("fa-IR" to "فارسی (ایران)", "en-US" to "English (US)", "auto" to "خودکار")
+                val languages = listOf("fa-IR" to "فارسی", "en-US" to "English", "auto" to "خودکار")
                 languages.forEach { (code, label) ->
                     val isSelected = (speechLanguage == code)
-                    Box(
+                    Surface(
+                        onClick = {
+                            speechLanguage = code
+                            prefs.speechLanguage = code
+                        },
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isSelected) NvidiaGreen else DarkSurfaceElevated)
-                            .clickable {
-                                speechLanguage = code
-                                prefs.speechLanguage = code
-                            }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(8.dp)),
+                        color = if (isSelected) NvidiaGreen else DarkSurfaceElevated,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaNeon else DarkBorder)
                     ) {
                         Text(
                             text = label,
                             color = if (isSelected) DarkBackground else TextPrimary,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Speech Rate
             Row(
@@ -473,7 +496,7 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // SECTION 4: SYSTEM PROMPT
         SettingsCard(title = "دستور سیستمی (System Prompt)", icon = Icons.Default.Speed) {
@@ -483,7 +506,7 @@ fun SettingsScreen(
                     systemPrompt = it
                     prefs.systemPrompt = it
                 },
-                label = { Text("شخصیت و رفتار مدل هوش مصنوعی") },
+                label = { Text("رفتار و شخصیت مدل NeMo") },
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 4,
                 colors = OutlinedTextFieldDefaults.colors(
@@ -495,81 +518,6 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // SECTION 5: ABOUT
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(DarkSurface)
-                .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                .padding(14.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "NeMoTalk — v1.0.0",
-                    color = NvidiaNeon,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "توسعه‌یافته توسط Helboy Coder بر پایه NVIDIA NeMo Speech",
-                    color = TextMuted,
-                    fontSize = 11.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = {
-                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/HELBOYCODER/nemotalk"))
-                        context.startActivity(browserIntent)
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(DarkBorder))
-                ) {
-                    Text("مشاهده مخزن در گیت‌هاب", fontSize = 11.sp)
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(24.dp))
-    }
-}
-
-@Composable
-fun SettingsCard(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    content: @Composable () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(DarkSurface)
-            .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-            .padding(14.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 10.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = NvidiaGreen,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-        }
-        content()
     }
 }

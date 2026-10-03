@@ -10,14 +10,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -86,63 +90,69 @@ fun VoiceHudScreen(
         label = "glow"
     )
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(DarkBackground)
-            .padding(24.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(16.dp)
     ) {
-        // Top Close Button & Title
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "حالت مکالمه صوتی NeMo",
-                    color = TextPrimary,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "مکالمه زنده و بلادرنگ با مدل ان‌ویدیا",
-                    color = TextMuted,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
+        val screenHeight = maxHeight
+        val orbSize = (screenHeight * 0.26f).coerceIn(120.dp, 200.dp)
 
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF1E2838))
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "بستن",
-                    tint = TextPrimary
-                )
-            }
-        }
-
-        // Center Voice Orb Visualizer
         Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Glowing Pulsing Outer Ring
+            // TOP HEADER (Close button + Title)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "مکالمه صوتی زنده NeMo",
+                        color = TextPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = "گفتگوی دوطرفه بلادرنگ با هوش مصنوعی",
+                        color = TextMuted,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1E2838))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "بستن",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(0.5f))
+
+            // CENTER GLOWING VOICE ORB
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(240.dp)
+                modifier = Modifier.size(orbSize * 1.3f)
             ) {
                 val activeScale = when {
-                    isListening -> (1.0f + rmsLevel * 0.4f)
+                    isListening -> (1.0f + rmsLevel * 0.35f)
                     isSpeaking -> pulseScale
                     isThinking -> pulseScale * 1.05f
                     else -> 1.0f
@@ -151,7 +161,7 @@ fun VoiceHudScreen(
                 // Outer Aura
                 Box(
                     modifier = Modifier
-                        .size(220.dp)
+                        .size(orbSize * 1.25f)
                         .scale(activeScale)
                         .clip(CircleShape)
                         .background(
@@ -167,8 +177,8 @@ fun VoiceHudScreen(
                 // Middle Ring
                 Box(
                     modifier = Modifier
-                        .size(170.dp)
-                        .scale(if (isListening) (1f + rmsLevel * 0.2f) else 1f)
+                        .size(orbSize)
+                        .scale(if (isListening) (1f + rmsLevel * 0.15f) else 1f)
                         .clip(CircleShape)
                         .border(
                             width = 2.dp,
@@ -186,7 +196,7 @@ fun VoiceHudScreen(
                 // Inner Core
                 Box(
                     modifier = Modifier
-                        .size(110.dp)
+                        .size(orbSize * 0.65f)
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(
@@ -206,21 +216,21 @@ fun VoiceHudScreen(
                             isListening -> Icons.Default.Mic
                             else -> Icons.Default.MicOff
                         },
-                        contentDescription = "وضعیت صدا",
+                        contentDescription = null,
                         tint = TextPrimary,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(orbSize * 0.28f)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // State Title
             val stateText = when {
                 isListening -> "در حال شنیدن صدای شما..."
                 isThinking -> "نِمو در حال اندیشیدن..."
                 isSpeaking -> "نِمو در حال پاسخ دادن..."
-                else -> "برای صحبت کردن روی میکروفون ضربه بزنید"
+                else -> "برای صحبت کردن دکمه میکروفون را لمس کنید"
             }
 
             Text(
@@ -231,24 +241,24 @@ fun VoiceHudScreen(
                     isSpeaking -> NvidiaGreen
                     else -> TextSecondary
                 },
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Waveform equalizer bars
             AudioWaveform(
                 isListening = isListening,
                 isSpeaking = isSpeaking,
                 rmsLevel = rmsLevel,
-                barCount = 15,
-                modifier = Modifier.height(44.dp)
+                barCount = 11,
+                modifier = Modifier.height(30.dp)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Display Live Transcription or AI Speech Text
+            // Spoken Transcription or AI Answer Card
             val displayText = when {
                 spokenText.isNotBlank() && isListening -> "شما: $spokenText"
                 aiResponseText.isNotBlank() && isSpeaking -> "نِمو: $aiResponseText"
@@ -256,67 +266,70 @@ fun VoiceHudScreen(
             }
 
             if (displayText.isNotBlank()) {
-                Box(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF141C2B))
-                        .border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                        .padding(16.dp)
+                        .padding(horizontal = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF141C2B),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
                 ) {
                     Text(
                         text = displayText,
                         color = TextPrimary,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                        maxLines = 4
+                        modifier = Modifier.padding(12.dp),
+                        maxLines = 3
                     )
                 }
             }
-        }
 
-        // Bottom Controls (Mic Toggle & Stop Speech)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Stop speaking button if AI is talking
-            if (isSpeaking) {
+            Spacer(modifier = Modifier.weight(1f))
+
+            // BOTTOM CONTROL ROW (Spacious, easy to tap)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Stop Button if AI is speaking
+                if (isSpeaking) {
+                    IconButton(
+                        onClick = onStopSpeaking,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF442727))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "قطع صدای پاسخ",
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(24.dp))
+                }
+
+                // Main Mic Button (Spacious 64dp)
                 IconButton(
-                    onClick = onStopSpeaking,
+                    onClick = onMicToggle,
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(64.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF442727))
+                        .background(if (isListening) NvidiaGreen else Color(0xFF1E2838))
+                        .border(2.dp, if (isListening) NvidiaNeon else DarkBorder, CircleShape)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Stop,
-                        contentDescription = "قطع صدای پاسخ",
-                        tint = Color(0xFFFF5252),
-                        modifier = Modifier.size(28.dp)
+                        imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicOff,
+                        contentDescription = "کنترل میکروفون",
+                        tint = if (isListening) DarkBackground else TextPrimary,
+                        modifier = Modifier.size(32.dp)
                     )
                 }
-            }
-
-            // Main Mic Toggle Button
-            IconButton(
-                onClick = onMicToggle,
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(if (isListening) NvidiaGreen else Color(0xFF1E2838))
-                    .border(2.dp, if (isListening) NvidiaNeon else DarkBorder, CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicOff,
-                    contentDescription = "کنترل میکروفون",
-                    tint = if (isListening) DarkBackground else TextPrimary,
-                    modifier = Modifier.size(36.dp)
-                )
             }
         }
     }

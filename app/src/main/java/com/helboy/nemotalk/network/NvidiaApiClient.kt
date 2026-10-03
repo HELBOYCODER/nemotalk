@@ -12,6 +12,13 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+data class SendMessageResult(
+    val content: String,
+    val latencyMs: Long,
+    val modelUsed: String,
+    val wasFallback: Boolean = false
+)
+
 class NvidiaApiClient {
 
     private val client = OkHttpClient.Builder()
@@ -22,21 +29,89 @@ class NvidiaApiClient {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val endpointUrl = "https://integrate.api.nvidia.com/v1/chat/completions"
+    private val modelsUrl = "https://integrate.api.nvidia.com/v1/models"
+
+    // High-availability fallback chain for NVIDIA API catalog
+    private val fallbackModels = listOf(
+        "nvidia/nemotron-4-340b-instruct",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "meta/llama-3.3-70b-instruct",
+        "meta/llama-3.1-8b-instruct",
+        "meta/llama-3.2-11b-vision-instruct",
+        "openai/gpt-oss-20b"
+    )
 
     suspend fun sendMessage(
         apiKey: String,
         model: String,
         messages: List<ChatMessage>,
         systemPrompt: String
-    ): Result<Pair<String, Long>> = withContext(Dispatchers.IO) {
+    ): Result<SendMessageResult> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
                 IllegalStateException("لطفاً ابتدا کلید API ان‌ویدیا (nvapi-...) را در بخش تنظیمات وارد کنید.")
             )
         }
 
-        val startTime = System.currentTimeMillis()
+        // 1. Try requested model first
+        val firstAttempt = executeRequest(apiKey, model, messages, systemPrompt)
+        if (firstAttempt.isSuccess) {
+            val (content, latency) = firstAttempt.getOrThrow()
+            return@withContext Result.success(
+                SendMessageResult(
+                    content = content,
+                    latencyMs = latency,
+                    modelUsed = model,
+                    wasFallback = false
+                )
+            )
+        }
 
+        val firstError = firstAttempt.exceptionOrNull()
+        val errorMsg = firstError?.message ?: ""
+
+        // Check if error is 404 (Function not found) or deprecated model
+        val isNotFoundOrDeprecated = errorMsg.contains("404") ||
+                errorMsg.contains("Function") ||
+                errorMsg.contains("not found", ignoreCase = true) ||
+                errorMsg.contains("inactive", ignoreCase = true)
+
+        if (!isNotFoundOrDeprecated) {
+            // Not a model ID issue, return original error (e.g. 401, 429, no internet)
+            return@withContext Result.failure(firstError ?: IOException("خطای نامشخص"))
+        }
+
+        // 2. Auto-fallback chain: Try fallback models until one works!
+        for (fallbackModel in fallbackModels) {
+            if (fallbackModel == model) continue
+
+            val fallbackAttempt = executeRequest(apiKey, fallbackModel, messages, systemPrompt)
+            if (fallbackAttempt.isSuccess) {
+                val (content, latency) = fallbackAttempt.getOrThrow()
+                return@withContext Result.success(
+                    SendMessageResult(
+                        content = content,
+                        latencyMs = latency,
+                        modelUsed = fallbackModel,
+                        wasFallback = true
+                    )
+                )
+            }
+        }
+
+        // If all fallbacks failed, report clear error
+        Result.failure(
+            IOException("مدل '$model' در اکانت ان‌ویدیا شما در دسترس نیست و مدل‌های جایگزین نیز پاسخ ندادند. لطفاً در تنظیمات کلید را تست یا مدل دیگری انتخاب کنید.")
+        )
+    }
+
+    private fun executeRequest(
+        apiKey: String,
+        model: String,
+        messages: List<ChatMessage>,
+        systemPrompt: String
+    ): Result<Pair<String, Long>> {
+        val startTime = System.currentTimeMillis()
         try {
             val rootJson = JSONObject().apply {
                 put("model", model)
@@ -80,14 +155,15 @@ class NvidiaApiClient {
                 val responseBody = response.body?.string() ?: ""
 
                 if (!response.isSuccessful) {
-                    val errorMsg = when (response.code) {
+                    val message = when (response.code) {
                         401 -> "کلید API ان‌ویدیا معتبر نیست (کد ۴۰۱). لطفاً کلید سالم وارد کنید."
+                        404 -> "خطای سرور ان‌ویدیا (404): مدل یا تابع در این اکانت یافت نشد."
                         403 -> "دسترسی به این مدل ان‌ویدیا مجاز نیست یا کردیت اکانت به اتمام رسیده است (کد ۴۰۳)."
                         429 -> "محدودیت تعداد درخواست ان‌ویدیا (Rate Limit). لطفاً کمی صبر کنید."
                         500, 502, 503 -> "سرور ان‌ویدیا در حال حاضر در دسترس نیست (کد ${response.code})."
                         else -> "خطای سرور ان‌ویدیا (${response.code}): ${parseErrorMessage(responseBody)}"
                     }
-                    return@withContext Result.failure(IOException(errorMsg))
+                    return Result.failure(IOException(message))
                 }
 
                 val responseJson = JSONObject(responseBody)
@@ -96,54 +172,96 @@ class NvidiaApiClient {
                     val firstChoice = choices.getJSONObject(0)
                     val messageObj = firstChoice.optJSONObject("message")
                     val content = messageObj?.optString("content") ?: ""
-                    return@withContext Result.success(Pair(content.trim(), latency))
+                    return Result.success(Pair(content.trim(), latency))
                 } else {
-                    return@withContext Result.failure(IOException("پاسخ دریافتی از سرور ان‌ویدیا خالی بود."))
+                    return Result.failure(IOException("پاسخ دریافتی از سرور ان‌ویدیا خالی بود."))
                 }
             }
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
-            return@withContext Result.failure(
+            return Result.failure(
                 IOException("خطا در برقراری ارتباط با ان‌ویدیا (${e.localizedMessage ?: "عدم اتصال به اینترنت"})")
             )
         }
     }
 
-    suspend fun testConnection(apiKey: String, model: String = "nvidia/llama-3.1-nemotron-70b-instruct"): Result<Long> = withContext(Dispatchers.IO) {
+    suspend fun fetchAvailableModels(apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("کلید API نمی‌تواند خالی باشد."))
+            return@withContext Result.failure(IllegalArgumentException("کلید API وارد نشده است."))
         }
 
-        val startTime = System.currentTimeMillis()
         try {
-            val testPayload = JSONObject().apply {
-                put("model", model)
-                put("max_tokens", 5)
-                put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", "ping")
-                    })
-                })
-            }
-
             val request = Request.Builder()
-                .url(endpointUrl)
+                .url(modelsUrl)
                 .addHeader("Authorization", "Bearer $apiKey")
-                .post(testPayload.toString().toRequestBody(jsonMediaType))
+                .addHeader("Accept", "application/json")
+                .get()
                 .build()
 
             client.newCall(request).execute().use { response ->
-                val latency = System.currentTimeMillis() - startTime
-                if (response.isSuccessful) {
-                    Result.success(latency)
-                } else {
-                    Result.failure(IOException("اتصال ناموفق بود (کد ${response.code})"))
+                val body = response.body?.string() ?: ""
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("دریافت مدل‌ها ناموفق بود (${response.code})"))
                 }
+
+                val json = JSONObject(body)
+                val data = json.optJSONArray("data") ?: JSONArray()
+                val list = mutableListOf<String>()
+                for (i in 0 until data.length()) {
+                    val obj = data.getJSONObject(i)
+                    val id = obj.optString("id")
+                    // Filter chat / instruct models
+                    if (id.isNotBlank() && (id.contains("instruct") || id.contains("chat") || id.contains("nemotron") || id.contains("llama") || id.contains("gemma"))) {
+                        list.add(id)
+                    }
+                }
+                list.sort()
+                Result.success(list)
             }
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun testConnection(apiKey: String, model: String = "nvidia/nemotron-4-340b-instruct"): Result<Pair<String, Long>> = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("کلید API نمی‌تواند خالی باشد."))
+        }
+
+        // Test with current model, or fallback
+        val modelsToTry = listOf(model) + fallbackModels.filter { it != model }
+        for (m in modelsToTry) {
+            val startTime = System.currentTimeMillis()
+            try {
+                val testPayload = JSONObject().apply {
+                    put("model", m)
+                    put("max_tokens", 5)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", "ping")
+                        })
+                    })
+                }
+
+                val request = Request.Builder()
+                    .url(endpointUrl)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .post(testPayload.toString().toRequestBody(jsonMediaType))
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val latency = System.currentTimeMillis() - startTime
+                    if (response.isSuccessful) {
+                        return@withContext Result.success(Pair(m, latency))
+                    }
+                }
+            } catch (_: Exception) {
+                continue
+            }
+        }
+
+        Result.failure(IOException("اتصال با هیچ‌یک از مدل‌ها برقرار نشد. لطفاً صحت کلید API را بررسی کنید."))
     }
 
     private fun parseErrorMessage(jsonStr: String): String {
