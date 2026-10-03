@@ -5,9 +5,13 @@ import android.content.Intent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
@@ -15,16 +19,29 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
 
     private var tts: TextToSpeech? = null
     private var isInitialized = false
+    private val scope = CoroutineScope(Dispatchers.Main + Job())
+
+    // 1. Embedded Neural Persian Speech Engine (Piper VITS Amir INT8)
+    val embeddedEngine = EmbeddedPersianTtsEngine(context)
 
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
-    private val _hasPersianVoice = MutableStateFlow(false)
+    private val _hasPersianVoice = MutableStateFlow(true)
     val hasPersianVoice: StateFlow<Boolean> = _hasPersianVoice.asStateFlow()
 
     private var onDoneCallback: (() -> Unit)? = null
 
     init {
+        // Collect embedded engine speaking state
+        scope.launch {
+            embeddedEngine.isSpeaking.collect { speaking ->
+                if (speaking) {
+                    _isSpeaking.value = true
+                }
+            }
+        }
+
         tts = TextToSpeech(context.applicationContext, this)
     }
 
@@ -55,24 +72,8 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     }
 
     private fun checkPersianVoiceAvailability() {
-        val engine = tts ?: return
-        try {
-            val voices = engine.voices
-            val hasFa = voices?.any { isVoicePersian(it) } == true
-            if (hasFa) {
-                _hasPersianVoice.value = true
-                return
-            }
-        } catch (_: Exception) {}
-
-        val faLocales = listOf(
-            Locale.forLanguageTag("fa-IR"),
-            Locale("fa", "IR"),
-            Locale("fa"),
-            Locale("fas")
-        )
-        val isAvail = faLocales.any { engine.isLanguageAvailable(it) >= TextToSpeech.LANG_AVAILABLE }
-        _hasPersianVoice.value = isAvail
+        // Embedded engine is always ready for Persian
+        _hasPersianVoice.value = true
     }
 
     private fun isVoicePersian(voice: Voice): Boolean {
@@ -82,13 +83,11 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     }
 
     private fun configureVoiceForPersian(engine: TextToSpeech): Boolean {
-        // 1. Search through all available voice packs (supports Google Speech Services neural Persian voice)
         try {
             val voices = engine.voices
             if (!voices.isNullOrEmpty()) {
                 val persianVoices = voices.filter { isVoicePersian(it) }
                 if (persianVoices.isNotEmpty()) {
-                    // Prefer local installed voice, or network high-quality voice
                     val chosen = persianVoices.find { !it.isNetworkConnectionRequired }
                         ?: persianVoices.first()
                     engine.voice = chosen
@@ -97,7 +96,6 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
             }
         } catch (_: Exception) {}
 
-        // 2. Try setting by locale
         val locales = listOf(
             Locale.forLanguageTag("fa-IR"),
             Locale("fa", "IR"),
@@ -111,7 +109,6 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
             }
         }
 
-        // 3. Fallback: Force set Locale("fa") — NEVER switch to English for Persian text!
         engine.language = Locale("fa")
         return false
     }
@@ -123,13 +120,31 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
         forcePersian: Boolean = false,
         onDone: () -> Unit = {}
     ) {
-        if (!isInitialized || tts == null) return
+        val cleanText = cleanMarkdownForSpeech(text)
+        val isPersian = forcePersian || containsPersianCharacters(cleanText)
+
+        // 1. Primary Engine: If Persian and Embedded Neural Engine is ready, synthesize directly on device!
+        if (isPersian && embeddedEngine.isReady.value) {
+            _isSpeaking.value = true
+            embeddedEngine.speak(
+                text = cleanText,
+                speechRate = speechRate,
+                onDone = {
+                    _isSpeaking.value = false
+                    onDone()
+                }
+            )
+            return
+        }
+
+        // 2. Secondary Engine: Fallback to Android system TextToSpeech
+        if (!isInitialized || tts == null) {
+            onDone()
+            return
+        }
 
         this.onDoneCallback = onDone
-        val cleanText = cleanMarkdownForSpeech(text)
         val engine = tts ?: return
-
-        val isPersian = forcePersian || containsPersianCharacters(cleanText)
 
         if (isPersian) {
             configureVoiceForPersian(engine)
@@ -161,6 +176,7 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     }
 
     fun stop() {
+        embeddedEngine.stop()
         tts?.stop()
         _isSpeaking.value = false
         onDoneCallback = null
@@ -186,7 +202,7 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     private fun cleanMarkdownForSpeech(text: String): String {
         return text
             // Strip code blocks and inline code
-            .replace(Regex("```[\\s\\S]*?```"), " قطعه کد ")
+            .replace(Regex("```[\\s\\S]*?```"), " ")
             .replace(Regex("`[^`]*`"), "")
             // Strip links, keep anchor text
             .replace(Regex("\\[(.*?)\\]\\(.*?\\)"), "$1")

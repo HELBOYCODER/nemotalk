@@ -28,32 +28,44 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Download Embedded Sherpa-ONNX Engine and Persian Voice Model
+        run: |
+          mkdir -p app/libs app/src/main/assets
+          echo "Downloading sherpa-onnx static AAR..."
+          curl -sL "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-static-link-onnxruntime-1.13.8.aar" -o app/libs/sherpa-onnx.aar
+          
+          echo "Downloading Piper Neural Persian INT8 Voice Model (Amir)..."
+          curl -sL "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-amir-medium-int8.tar.bz2" | tar -xjf - -C app/src/main/assets/
+          
+          ls -lh app/libs/
+          ls -la app/src/main/assets/vits-piper-fa_IR-amir-medium-int8/
+
       - name: Build Android Release APK
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Copy and rename APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk dist/NeMoTalk-1.2.0.apk
+          cp app/build/outputs/apk/release/*.apk dist/NeMoTalk-1.3.0.apk
           ls -la dist/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NeMoTalk-1.2.0-APK
-          path: dist/NeMoTalk-1.2.0.apk
+          name: NeMoTalk-1.3.0-APK
+          path: dist/NeMoTalk-1.3.0.apk
           retention-days: 90
 
       - name: Create or Update GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="v1.2.0"
-          NOTES="NeMoTalk v1.2.0 — آوانمو: پشتیبانی کامل و بومی از مکالمه و خوانش صوتی زبان فارسی (Google Speech Neural Persian Voice) + دستور ویژه فارسی برای مدل‌های ان‌ویدیا"
+          TAG_NAME="v1.3.0"
+          NOTES="NeMoTalk v1.3.0 — آوانمو: موتور داخلی و مستقل تبدیل متن به گفتار فارسی (Embedded Neural Piper VITS Amir INT8) بدون نیاز به تنظیمات یا دیتای خارجی + صحبت صوتی ۱۰۰٪ بومی و آفلاین"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME already exists, uploading asset..."
-            gh release upload "$TAG_NAME" dist/NeMoTalk-1.2.0.apk --clobber
+            gh release upload "$TAG_NAME" dist/NeMoTalk-1.3.0.apk --clobber
           else
             echo "Creating new release $TAG_NAME..."
-            gh release create "$TAG_NAME" dist/NeMoTalk-1.2.0.apk --title "NeMoTalk v1.2.0 — آوانمو" --notes "$NOTES"
+            gh release create "$TAG_NAME" dist/NeMoTalk-1.3.0.apk --title "NeMoTalk v1.3.0 — آوانمو" --notes "$NOTES"
           fi
