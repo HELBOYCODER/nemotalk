@@ -49,21 +49,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME="v1.0.0"
+          NOTES="NeMoTalk v1.0.0 — آوانمو: چت صوتی و متنی هوشمند با مدل‌های NVIDIA NeMo و Nemotron"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME already exists, uploading asset..."
             gh release upload "$TAG_NAME" dist/NeMoTalk-1.0.0.apk --clobber
           else
             echo "Creating new release $TAG_NAME..."
-            gh release create "$TAG_NAME" dist/NeMoTalk-1.0.0.apk \
-              --title "NeMoTalk v1.0.0 — آوانمو: چت صوتی و متنی هوش مصنوعی ان‌ویدیا" \
-              --notes "🎙️ **NeMoTalk v1.0.0 Release**
-
-  نسخه رسمی اپلیکیشن اندروید جهت گفتگو و مکالمه صوتی بلادرنگ با مدل‌های قدرتمند NVIDIA NeMo و Nemotron با پشتیبانی کامل از زبان فارسی و انگلیسی.
-
-  ### 🚀 ویژگی‌های کلیدی:
-  - 🗣️ **گفتگوی صوتی زنده دوطرفه:** صحبت به زبان فارسی یا انگلیسی و شنیدن پاسخ صوتی بلادرنگ
-  - 🤖 **پشتیبانی از مدل‌های پرچمدار ان‌ویدیا:** Nemotron 70B, Nemotron 340B, Nemotron Mini 4B, Llama 3.3
-  - ⚡ **رایگان با کلید رسمی ان‌ویدیا:** ۱۰۰۰ کردیت هدیه برای تمام کاربران با ثبت‌نام رایگان در build.nvidia.com
-  - 🎨 **طراحی چشم‌نواز Dark با تم اختصاصی سبز ان‌ویدیا** و آیکون اختصاصی
-  - 🔒 **حریم خصوصی ۱۰۰٪:** کلید شما فقط روی گوشی خودتان ذخیره می‌شود."
+            gh release create "$TAG_NAME" dist/NeMoTalk-1.0.0.apk --title "NeMoTalk v1.0.0 — آوانمو" --notes "$NOTES"
           fi
