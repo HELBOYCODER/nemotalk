@@ -74,6 +74,7 @@ import com.helboy.nemotalk.ui.theme.DarkBorder
 import com.helboy.nemotalk.ui.theme.DarkSurface
 import com.helboy.nemotalk.ui.theme.DarkSurfaceElevated
 import com.helboy.nemotalk.ui.theme.ErrorRed
+import com.helboy.nemotalk.ui.theme.NvidiaDarkGreen
 import com.helboy.nemotalk.ui.theme.NvidiaGreen
 import com.helboy.nemotalk.ui.theme.NvidiaNeon
 import com.helboy.nemotalk.ui.theme.SuccessGreen
