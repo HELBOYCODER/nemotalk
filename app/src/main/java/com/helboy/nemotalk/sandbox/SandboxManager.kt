@@ -66,11 +66,11 @@ class SandboxManager(private val context: Context) {
                 tmp.delete()
             }
             Log.i(TAG, "Alpine rootfs extracted to ${rootfsDir.absolutePath}")
-            true
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "rootfs bootstrap failed", e)
             bootstrapped.set(false)
-            false
+            return false
         }
     }
 
