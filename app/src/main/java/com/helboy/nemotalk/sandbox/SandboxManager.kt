@@ -118,7 +118,10 @@ class SandboxManager(private val context: Context) {
             "--kill-on-exit",
             "/bin/sh", "-c"
         ).apply {
-            add(command.joinToString(" "))
+            // ponytail: shell-quote each argv element. Naive space-joining turns
+            // listOf("echo", "a b") into "echo a b" (two args, not one) and lets
+            // any argv element inject shell syntax. Shlex keeps it exact.
+            add(command.joinToString(" ") { "'" + it.replace("'", "'\\''") + "'" })
         }.toList()
     }
 

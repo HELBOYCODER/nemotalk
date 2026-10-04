@@ -29,7 +29,7 @@ def build(rootfs: str, cache: str, files: str, command, workdir=None):
         "-w", workdir or "/home/neon",
         "--kill-on-exit",
         "/bin/sh", "-c",
-        " ".join(command),
+        " ".join("'" + c.replace("'","'\\''") + "'" for c in command),
     ]
     return argv
 
@@ -48,7 +48,7 @@ expected = [
     "-b", "/data/user/0/com.helboy.nemotalk/files:/home/neon",
     "-w", "/home/neon",
     "--kill-on-exit",
-    "/bin/sh", "-c", "uname -a",
+    "/bin/sh", "-c", "'uname -a'",
 ]
 assert out == expected, "\n got: %s\n want: %s" % (out, expected)
 
@@ -72,3 +72,17 @@ assert "/data/user/0/com.helboy.nemotalk/files:/home/neon" in explicit
 
 print("OK buildProotCommand: %d tokens, flags valid, all binds explicit" % len(out))
 print("    " + " ".join(out[:12]) + " ...")
+
+# Injection regression: an argv element containing spaces or shell metacharacters
+# must arrive as a single quoted argument, not be re-parsed by /bin/sh.
+tricky = build(
+    "/rootfs", "/cache", "/files",
+    ["echo", "hello world; rm -rf /", "$HOME", "it's"],
+)
+sh = tricky[-1]
+assert sh == "\"echo 'hello world; rm -rf /' '$HOME' 'it'\\''s'\"" or \
+       sh == "'echo' 'hello world; rm -rf /' '$HOME' 'it'\\''s'", \
+       "argv not shell-quoted: %r" % sh
+assert ";" not in sh.replace("hello world; rm -rf /", ""), \
+    "unquoted semicolon would run a second command"
+print("OK injection guard: argv elements are shell-quoted -> %s" % sh)

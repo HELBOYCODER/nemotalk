@@ -291,6 +291,12 @@ class ChatDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         val sanitized = query.trim().replace("\"", " ")
         if (sanitized.isBlank()) return emptyList()
 
+        // A malformed FTS expression (unbalanced parens, a dangling operator)
+        // raises SQLiteException and crashes the chat. Quote the whole thing so
+        // it is treated as a literal phrase; a phrase that matches nothing is
+        // the correct outcome for garbage input.
+        val phrase = "\"" + sanitized.replace("\"", "") + "\""
+
         val out = mutableListOf<String>()
         val cursor = db.rawQuery(
             """SELECT m.$MEM_CONTENT
@@ -299,7 +305,7 @@ class ChatDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 WHERE memory_fts MATCH ?
                 ORDER BY (rank + (m.$MEM_LAST_SEEN / 1000000.0)) ASC
                 LIMIT ?""".trimIndent(),
-            arrayOf(sanitized, limit.toString())
+            arrayOf(phrase, limit.toString())
         )
         cursor.use {
             while (it.moveToNext()) out.add(it.getString(0))
