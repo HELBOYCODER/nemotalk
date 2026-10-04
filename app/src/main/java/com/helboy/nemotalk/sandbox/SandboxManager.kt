@@ -79,31 +79,18 @@ class SandboxManager(private val context: Context) {
 
     /**
      * Runs [command] *inside* the chroot via proot. Blocks until it exits.
-     * Returns the process exit code, or -1 on failure.
+     * Returns a pair of (exitCode, capturedStdout). ponytail: one
+     * ProcessBuilder with redirectErrorStream covers both the "I need the
+     * output" and "I need the exit code" cases — no second implementation.
      */
-    fun run(command: List<String>, workdir: String? = null): Int {
+    fun run(command: List<String>, workdir: String? = null): Pair<Int, String> {
         if (!isAvailable()) {
             Log.w(TAG, "sandbox not available; refusing to run $command")
-            return -1
+            return -1 to ""
         }
         val argv = buildProotCommand(command, workdir)
         Log.d(TAG, "exec: ${argv.joinToString(" ")}")
         return runProcess(argv)
-    }
-
-    /**
-     * Same as [run] but returns captured stdout. ponytail: ProcessBuilder
-     * redirectErrorStream handles the common "I want the output" case so we
-     * don't need a second stream-pump implementation.
-     */
-    fun runCapture(command: List<String>, workdir: String? = null): String {
-        if (!isAvailable()) return ""
-        val argv = buildProotCommand(command, workdir)
-        return ProcessBuilder(argv)
-            .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .start()
-            .inputStream.bufferedReader().use { it.readText() }
     }
 
     /**
@@ -135,7 +122,7 @@ class SandboxManager(private val context: Context) {
         }.toList()
     }
 
-    private fun runProcess(argv: List<String>): Int {
+    private fun runProcess(argv: List<String>): Pair<Int, String> {
         val pb = ProcessBuilder(argv).redirectErrorStream(true)
         val proc = pb.start()
         val out = StringBuilder()
@@ -144,7 +131,7 @@ class SandboxManager(private val context: Context) {
         }.start()
         val code = proc.waitFor()
         if (out.isNotEmpty()) Log.d(TAG, out.toString().trim())
-        return code
+        return code to out.toString().trim()
     }
 
     private fun extractTarGz(tarGz: File, dest: File) {

@@ -85,9 +85,9 @@ fun SandboxScreen(
         running = true
         status = "در حال اجرا…"
         Thread {
-            val r = sandbox.execute(listOf(cmd), workdir = "/home/neon")
-            output = r.stdout
-            status = if (r.success) "انجام شد (${r.exitCode})" else "خطا (${r.exitCode})"
+            val (code, stdout) = sandbox.run(listOf(cmd), workdir = "/home/neon")
+            output = stdout.ifBlank { "(exit $code)" }
+            status = if (code == 0) "انجام شد (exit $code)" else "خطا (exit $code)"
             running = false
         }.start()
     }
