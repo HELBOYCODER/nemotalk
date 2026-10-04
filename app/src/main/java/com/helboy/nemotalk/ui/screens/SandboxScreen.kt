@@ -12,19 +12,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,7 +30,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,13 +49,10 @@ import com.helboy.nemotalk.sandbox.SandboxManager
 import com.helboy.nemotalk.ui.theme.DarkBackground
 import com.helboy.nemotalk.ui.theme.DarkBorder
 import com.helboy.nemotalk.ui.theme.DarkSurface
-import com.helboy.nemotalk.sandbox.SandboxManager
-import com.helboy.nemotalk.sandbox.SandboxResult
 import com.helboy.nemotalk.ui.theme.NvidiaGreen
 import com.helboy.nemotalk.ui.theme.NvidiaNeon
 import com.helboy.nemotalk.ui.theme.TextMuted
 import com.helboy.nemotalk.ui.theme.TextPrimary
-import com.helboy.nemotalk.ui.theme.TextSecondary
 
 private const val QUICK_CMD = "uname -a && cat /etc/alpine-release && apk add -q curl >/dev/null 2>&1 && curl -s ifconfig.me"
 
@@ -149,7 +141,7 @@ fun SandboxScreen(
                     minLines = 2,
                     enabled = !running,
                     placeholder = { Text("apk add python3 …", color = TextMuted, fontSize = 12.sp) },
-                    textStyle = TextDefaults.inputTextStyle(
+                    textStyle = androidx.compose.ui.text.TextStyle(
                         color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 12.sp
                     )
                 )
@@ -224,7 +216,7 @@ fun SandboxScreen(
                         enabled = true,
                         singleLine = true,
                         placeholder = { Text("یادآوری… مثلاً: کاربر فارسی صحبت می‌کند", color = TextMuted, fontSize = 12.sp) },
-                        textStyle = TextDefaults.inputTextStyle(color = TextPrimary, fontSize = 13.sp)
+                        textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 13.sp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
