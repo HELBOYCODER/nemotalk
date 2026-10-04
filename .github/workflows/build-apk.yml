@@ -46,26 +46,35 @@ jobs:
       - name: Copy and rename APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk dist/NeMoTalk-2.1.0.apk
+          VERSION=$(grep -E 'versionName = ' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)"/\1/')
+          cp app/build/outputs/apk/release/*.apk "dist/NeMoTalk-${VERSION}.apk"
           ls -la dist/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NeMoTalk-2.1.0-APK
-          path: dist/NeMoTalk-2.1.0.apk
+          name: NeMoTalk-APK
+          path: dist/NeMoTalk-*.apk
           retention-days: 90
+
+      - name: Run local Python test-suite (tar / memory / proot)
+        run: |
+          python3 tools/tar_test.py
+          python3 tools/memory_test.py
+          python3 tools/proot_test.py
+          python3 tools/check.sh
 
       - name: Create or Update GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="v2.1.0"
-          NOTES="NeMoTalk v2.1.0 — سندباکس لینوکس داخلی بدون روت + حافظه بلندمدت + پروکسی داخلی"
+          VERSION=$(grep -E 'versionName = ' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)"/\1/')
+          TAG_NAME="v${VERSION}"
+          NOTES="NeMoTalk v${VERSION} — Minis-grade v3.0: Design System + domain + shattered ChatScreen (V3 orchestrator)"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME already exists, uploading asset..."
-            gh release upload "$TAG_NAME" dist/NeMoTalk-2.1.0.apk --clobber
+            gh release upload "$TAG_NAME" dist/NeMoTalk-${VERSION}.apk --clobber
           else
             echo "Creating new release $TAG_NAME..."
-            gh release create "$TAG_NAME" dist/NeMoTalk-2.1.0.apk --title "NeMoTalk v2.1.0 — سندباکس داخلی و حافظه" --notes "$NOTES"
+            gh release create "$TAG_NAME" dist/NeMoTalk-${VERSION}.apk --title "NeMoTalk v${VERSION} — Minis-grade v3.0" --notes "$NOTES"
           fi

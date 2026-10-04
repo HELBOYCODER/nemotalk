@@ -12,8 +12,8 @@ android {
         applicationId = "com.helboy.nemotalk"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "2.1.0"
+        versionCode = 8
+        versionName = "3.0.0"
 
         ndk {
             // The embedded proot sandbox ships prebuilt ARM64 binaries only;
