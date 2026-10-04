@@ -200,8 +200,8 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
      */
     fun applySpeechParameters(rate: Float, pitch: Float) {
         try {
-            tts.setSpeechRate(rate.coerceIn(0.6f, 1.6f))
-            tts.setPitch(pitch.coerceIn(0.7f, 1.5f))
+            tts?.setSpeechRate(rate.coerceIn(0.6f, 1.6f))
+            tts?.setPitch(pitch.coerceIn(0.7f, 1.5f))
         } catch (_: Exception) {
         }
     }
