@@ -381,7 +381,7 @@ fun NeMoTalkApp() {
                     SandboxScreen(
                         sandbox = sandbox,
                         database = database,
-                        onClose = { currentScreen = AppScreen.SETTINGS }
+                        onBack = { currentScreen = AppScreen.SETTINGS }
                     )
                 }
             }

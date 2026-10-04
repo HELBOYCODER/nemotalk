@@ -178,7 +178,15 @@ class SandboxManager(private val context: Context) {
                 continue
             }
 
-            val safePath = sanitize(rawName) ?: run { skipFully(stream, size); continue }
+            val safePath = sanitize(rawName)
+            if (safePath == null) {
+                // Refuse the entry, but still consume its payload so the stream
+                // stays aligned — dropping the bytes would corrupt every later entry.
+                skipFully(stream, size)
+                skipPad(stream, size)
+                continue
+            }
+
             val target = File(dest, safePath)
 
             when (type) {
