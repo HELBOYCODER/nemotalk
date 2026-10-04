@@ -26,7 +26,7 @@ import com.helboy.nemotalk.sandbox.SandboxManager
 import com.helboy.nemotalk.speech.SpeechRecognitionHelper
 import com.helboy.nemotalk.speech.TextToSpeechHelper
 import com.helboy.nemotalk.ui.components.ChatListDrawer
-import com.helboy.nemotalk.ui.screens.ChatScreen
+import com.helboy.nemotalk.ui.chat.ChatScreenV3
 import com.helboy.nemotalk.ui.screens.SandboxScreen
 import com.helboy.nemotalk.ui.screens.SettingsScreen
 import com.helboy.nemotalk.ui.screens.VoiceHudScreen
@@ -179,39 +179,43 @@ fun NeMoTalkApp() {
         ) {
             when (currentScreen) {
                 AppScreen.CHAT -> {
-                    ChatScreen(
+                    var showModelSheet by remember { mutableStateOf(false) }
+                    ChatScreenV3(
                         messages = messages,
+                        conversations = conversations,
                         isThinking = isThinking,
                         isListening = isListening,
                         rmsLevel = rmsLevel,
-                        currentlySpeakingId = currentlySpeakingId,
                         hasApiKey = prefs.apiKey.isNotBlank(),
                         selectedModelId = activeModelId.ifBlank { prefs.selectedModel },
-                        onModelChange = { newModelId ->
-                            vm.setModel(newModelId)
-                            prefs.selectedModel = newModelId
-                        },
-                        onSendMessage = { text, image -> handleSendMessage(text, isFromVoice = false, imageUri = image) },
-                        onVoiceHudOpen = {
-                            currentScreen = AppScreen.VOICE_HUD
-                            startListeningWithPermission(fromVoiceHud = true)
-                        },
-                        onMicQuickToggle = {
-                            if (isListening) {
-                                speechHelper.stopListening()
-                            } else {
-                                startListeningWithPermission(fromVoiceHud = false)
-                            }
-                        },
+                        onOpenChatList = { showChatDrawer = true },
+                        onShowModelSheet = { showModelSheet = true },
                         onNewChat = {
                             ttsHelper.stop()
                             currentlySpeakingId = null
                             vm.newChat()
                         },
-                        onOpenChatList = {
-                            showChatDrawer = true
+                        onVoiceHudOpen = {
+                            currentScreen = AppScreen.VOICE_HUD
+                            startListeningWithPermission(fromVoiceHud = true)
                         },
-                        onSpeakMessage = { msg ->
+                        onOpenSettings = { currentScreen = AppScreen.SETTINGS },
+                        onSend = { text, image -> handleSendMessage(text, isFromVoice = false, imageUri = image) },
+                        onPromptSelect = { prompt -> handleSendMessage(prompt, isFromVoice = false) },
+                        onMicQuickToggle = {
+                            if (isListening) speechHelper.stopListening()
+                            else startListeningWithPermission(fromVoiceHud = false)
+                        },
+                        onModelSelect = { newModelId ->
+                            vm.setModel(newModelId)
+                            prefs.selectedModel = newModelId
+                        },
+                        onClearCurrentChat = {
+                            ttsHelper.stop()
+                            currentlySpeakingId = null
+                            vm.clearCurrent()
+                        },
+                        onSpeakText = { msg ->
                             ttsHelper.stop()
                             currentlySpeakingId = msg.id
                             ttsHelper.speak(
@@ -225,14 +229,9 @@ fun NeMoTalkApp() {
                             ttsHelper.stop()
                             currentlySpeakingId = null
                         },
-                        onClearChat = {
-                            ttsHelper.stop()
-                            currentlySpeakingId = null
-                            vm.clearCurrent()
-                        },
-                        onOpenSettings = {
-                            currentScreen = AppScreen.SETTINGS
-                        }
+                        currentlySpeakingId = currentlySpeakingId,
+                        showModelSheet = showModelSheet,
+                        onDismissModelSheet = { showModelSheet = false }
                     )
                 }
 

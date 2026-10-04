@@ -22,9 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
 import com.helboy.nemotalk.model.ChatMessage
 import com.helboy.nemotalk.model.Conversation
 import com.helboy.nemotalk.ui.components.MessageBubble
@@ -56,11 +54,12 @@ fun ChatScreenV3(
     onModelSelect: (String) -> Unit,
     onClearCurrentChat: () -> Unit,
     onSpeakText: (ChatMessage) -> Unit,
+    onStopSpeak: () -> Unit,
+    currentlySpeakingId: String?,
     showModelSheet: Boolean,
     onDismissModelSheet: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var inputText by remember { mutableStateOf("") }
@@ -113,19 +112,11 @@ fun ChatScreenV3(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     items(messages, key = { it.id }) { message ->
-                        val bubbleImageUri = message.imageUri?.let { uriStr ->
-                            try {
-                                val parsed = Uri.parse(uriStr)
-                                val doc = DocumentFile.fromSingleUri(context, parsed)
-                                if (doc != null && doc.exists()) uriStr else null
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
                         MessageBubble(
                             message = message,
-                            imageUri = bubbleImageUri,
-                            onSpeakClick = { onSpeakText(message) }
+                            isSpeakingThis = (currentlySpeakingId == message.id),
+                            onSpeakClick = { onSpeakText(message) },
+                            onStopSpeakClick = onStopSpeak
                         )
                     }
 
