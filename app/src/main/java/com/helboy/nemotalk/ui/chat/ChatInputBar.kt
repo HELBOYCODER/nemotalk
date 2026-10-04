@@ -3,6 +3,7 @@ package com.helboy.nemotalk.ui.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,7 @@ import com.helboy.nemotalk.ui.theme.TextSecondary
  * Extracted from ChatScreen (lines 359-507): live wave strip + input bar.
  * State hoisted: caller owns inputText/pendingImageUri via callbacks.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RecordingWaveStrip(
     isListening: Boolean,
@@ -92,6 +94,7 @@ fun RecordingWaveStrip(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatInputBar(
     inputText: String,
