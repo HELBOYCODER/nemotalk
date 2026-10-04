@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +73,7 @@ import com.helboy.nemotalk.model.ChatMessage
 import com.helboy.nemotalk.model.NvidiaModel
 import com.helboy.nemotalk.ui.components.AudioWaveform
 import com.helboy.nemotalk.ui.components.MessageBubble
+import com.helboy.nemotalk.ui.components.ThinkingSkeleton
 import com.helboy.nemotalk.ui.theme.DarkBackground
 import com.helboy.nemotalk.ui.theme.DarkBorder
 import com.helboy.nemotalk.ui.theme.DarkSurface
@@ -346,35 +346,10 @@ fun ChatScreen(
                         )
                     }
 
-                    // NeMo Thinking / Typing Indicator
+                    // NeMo Thinking — Minis-grade skeleton shimmer
                     if (isThinking) {
                         item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF142417)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = NvidiaNeon,
-                                        modifier = Modifier.size(14.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "نِمو در حال پاسخ...",
-                                    color = TextMuted,
-                                    fontSize = 12.sp
-                                )
-                            }
+                            ThinkingSkeleton()
                         }
                     }
                 }
