@@ -27,7 +27,7 @@ class SandboxManager(private val context: Context) {
 
     companion object {
         private const val TAG = "NeMoTalkSandbox"
-        const val ROOTFS_ASSET = "alpine-minirootfs.tar.gz"
+        const val ROOTFS_ASSET = "alpine-rootfs.tgz"
         const val ROOTFS_DIR = "alpine-rootfs"
         const val PROOT_LIB = "libproot.so"
         const val LOADER_LIB = "libloader.so"
@@ -166,13 +166,19 @@ class SandboxManager(private val context: Context) {
 
             // GNU longname entry — the real filename follows as file data.
             if (type == 'L') {
-                val nameBuf = ByteArray(size.toInt().coerceAtMost(4096))
+                // ponytail: read up to 4 KB of name, then skip whatever is
+                // left plus the block padding. Using size % 512 here alone
+                // would skip nothing when size is already block-aligned and
+                // misalign every following entry.
+                val nameLen = minOf(size.toInt(), 4096)
+                val nameBuf = ByteArray(nameLen)
                 var off = 0
                 while (off < nameBuf.size) {
                     val r = stream.read(nameBuf, off, nameBuf.size - off)
                     if (r <= 0) break
                     off += r
                 }
+                skipFully(stream, size - nameLen)
                 skipPad(stream, size)
                 pendingName = String(nameBuf, 0, off).trimEnd('\u0000')
                 continue
@@ -194,15 +200,18 @@ class SandboxManager(private val context: Context) {
                 '2' -> { // symlink
                     target.parentFile?.mkdirs()
                     val linkName = String(buf, 157, 100).trimEnd('\u0000')
+                    // Absolute targets (e.g. /bin/sh -> /bin/busybox) are the
+                    // norm in Alpine: 306 of 335 symlinks use them, including
+                    // /bin/sh itself, which proot needs to exec anything.
+                    // Rewriting them to relative keeps them inside the rootfs.
+                    val resolved = resolveLink(safePath, linkName)
                     runCatching { target.delete() }
-                    // Writing a symlink needs NIO; fall back to a plain file copy
-                    // of nothing if the platform refuses.
                     try {
                         java.nio.file.Files.createSymbolicLink(
-                            target.toPath(), java.nio.file.Paths.get(linkName)
+                            target.toPath(), java.nio.file.Paths.get(resolved)
                         )
                     } catch (e: Exception) {
-                        Log.d(TAG, "symlink skipped: $safePath -> $linkName")
+                        Log.d(TAG, "symlink skipped: $safePath -> $resolved")
                     }
                 }
                 else -> {
@@ -253,5 +262,21 @@ class SandboxManager(private val context: Context) {
         if (name.startsWith("/")) return null
         if (name.contains("..")) return null
         return name
+    }
+
+    /**
+     * Converts an absolute symlink target (Alpine's default) into a relative
+     * one that stays inside the rootfs. `linkName` is taken as root-relative:
+     * /bin/busybox from bin/sh becomes "busybox" (same directory), and from
+     * usr/bin/yes becomes "../../bin/busybox".
+     */
+    private fun resolveLink(source: String, linkName: String): String {
+        if (!linkName.startsWith("/")) return linkName
+        // Depth = how deep the link itself sits: bin/sh is one level down, so
+        // its parent bin/ is at depth 0 and needs no ".." at all.
+        val parts = source.trim('/').split("/").filter { it.isNotEmpty() }
+        val depth = (parts.size - 1).coerceAtLeast(0)
+        val rel = linkName.trimStart('/')
+        return if (depth == 0) rel else ("../".repeat(depth) + rel)
     }
 }

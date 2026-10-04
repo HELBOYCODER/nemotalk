@@ -44,6 +44,14 @@ android {
         compose = true
     }
 
+    androidResources {
+        // Keep the Alpine rootfs gzip-compressed in the APK. AGP/AAPT would
+        // otherwise decompress *.gz assets at build time and strip the .gz
+        // suffix, which breaks SandboxManager's GZIPInputStream and bloats
+        // the APK by ~4 MB.
+        noCompress += "tgz"
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
