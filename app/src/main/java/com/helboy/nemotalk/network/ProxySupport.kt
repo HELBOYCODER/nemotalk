@@ -58,20 +58,18 @@ object ProxySupport {
         if (!isEnabled(prefs)) return builder
 
         val host = prefs.proxyAddress.ifBlank { DEFAULT_HOST }
-        val type = prefs.proxyType
-        val (port, auth) = when (type) {
-            PreferencesManager.PROXY_TYPE_HTTP -> {
-                val p = parsePort(prefs.proxyHttpPort, DEFAULT_HTTP_PORT)
-                p to true
-            }
-            else -> {
-                // SOCKS5
-                val p = parsePort(prefs.proxyPort, DEFAULT_SOCKS_PORT)
-                p to false
-            }
+        val isHttp = prefs.proxyType == java.net.Proxy.Type.HTTP
+        val (port, auth) = if (isHttp) {
+            val p = parsePort(prefs.proxyHttpPort, DEFAULT_HTTP_PORT)
+            p to true
+        } else {
+            // SOCKS5
+            val p = parsePort(prefs.proxyPort, DEFAULT_SOCKS_PORT)
+            p to false
         }
 
-        builder.proxy(java.net.Proxy(type, InetSocketAddress(host, port)))
+        val proxy = if (isHttp) java.net.Proxy.Type.HTTP else java.net.Proxy.Type.SOCKS
+        builder.proxy(java.net.Proxy(proxy, InetSocketAddress(host, port)))
 
         if (auth) {
             // HTTP CONNECT basic auth (SOCKS5 user/pass is handled by the JVM

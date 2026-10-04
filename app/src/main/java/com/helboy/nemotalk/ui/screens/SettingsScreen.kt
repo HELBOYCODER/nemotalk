@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
@@ -121,8 +122,14 @@ fun SettingsScreen(
     var geminiVoice by remember { mutableStateOf(prefs.geminiVoice) }
 
     // In-app proxy state (ZeroNet / Zray on 127.0.0.1)
+    // State stores the preset code ("socks"/"http") exactly as prefs encode it.
     var proxyEnabled by remember { mutableStateOf(prefs.proxyEnabled) }
-    var proxyType by remember { mutableStateOf(prefs.proxyType.name.lowercase()) }
+    var proxyType by remember {
+        mutableStateOf(
+            if (prefs.proxyType == java.net.Proxy.Type.HTTP)
+                PreferencesManager.PROXY_TYPE_HTTP else PreferencesManager.PROXY_TYPE_SOCKS
+        )
+    }
     var proxyHost by remember { mutableStateOf(prefs.proxyAddress) }
     var proxySocksPort by remember { mutableStateOf(prefs.proxyPort) }
     var proxyHttpPort by remember { mutableStateOf(prefs.proxyHttpPort) }
@@ -805,8 +812,7 @@ fun SettingsScreen(
                                     proxyType = code
                                     prefs.proxyType = if (code == PreferencesManager.PROXY_TYPE_HTTP)
                                         java.net.Proxy.Type.HTTP else java.net.Proxy.Type.SOCKS
-                                },
-                                modifier = Modifier
+                                },                                modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(10.dp)),
                                 color = if (proxyType == code) Color(0xFF132218) else Color(0xFF121620),
