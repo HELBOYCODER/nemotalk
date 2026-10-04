@@ -1,0 +1,262 @@
+package com.helboy.nemotalk.sandbox
+
+import android.content.Context
+import android.util.Log
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Sadaqah: a no-root Linux sandbox for NeMoTalk.
+ *
+ * Method copied 1:1 from OpenMinis (github.com/OpenMinis/OpenMinis): the Android
+ * package installer unpacks every .so under app/src/main/jniLibs and chmods it
+ * executable. We therefore ship `libproot.so` + `libloader.so` as fake native
+ * libraries — that gives us *binary* access without a rooted device — and call
+ * them directly, emulating what OpenMinis's PRootKernel does.
+ *
+ * `libproot.so` is a plain copy of the Termux proot binary (statically linked
+ * against Bionic via /system/bin/linker64), and `libloader.so` is Termux's
+ * proot loader. Alpine aarch64 minirootfs ships compressed in assets and is
+ * extracted once into the app's private data dir.
+ *
+ * Result: NeMoTalk gets a full apk/busybox/linux toolchain inside its own
+ * process — the agent can compile, run pip/python, and use the same Linux
+ * tools Minis itself uses on-device, all without touching VpnService.
+ */
+class SandboxManager(private val context: Context) {
+
+    companion object {
+        private const val TAG = "NeMoTalkSandbox"
+        const val ROOTFS_ASSET = "alpine-minirootfs.tar.gz"
+        const val ROOTFS_DIR = "alpine-rootfs"
+        const val PROOT_LIB = "libproot.so"
+        const val LOADER_LIB = "libloader.so"
+
+        // proot kills file caching when /proc isn't there; this is the standard fix.
+        private const val PROOT_NO_KILL = "--no-kill-on-exit"
+    }
+
+    private val rootfsDir = File(context.filesDir, ROOTFS_DIR)
+    private val bootstrapped = AtomicBoolean(false)
+
+    // Prebuilt binary paths (they land here because Android's installer treats
+    // jniLibs contents as a native library directory).
+    private val prootBinary: File
+        get() = File(context.applicationInfo.nativeLibraryDir, PROOT_LIB)
+
+    private val loaderBinary: File
+        get() = File(context.applicationInfo.nativeLibraryDir, LOADER_LIB)
+
+    /**
+     * Extracts the Alpine rootfs from assets on first run. Idempotent — a
+     * later [bootstrap] after extraction is a no-op.
+     */
+    fun bootstrap(): Boolean {
+        if (!bootstrapped.compareAndSet(false, true)) return true
+        try {
+            if (File(rootfsDir, "bin/busybox").exists()) {
+                Log.i(TAG, "rootfs already present at ${rootfsDir.absolutePath}")
+                return true
+            }
+            rootfsDir.mkdirs()
+            context.assets.open(ROOTFS_ASSET).use { input ->
+                val tmp = File(context.cacheDir, ROOTFS_ASSET)
+                tmp.outputStream().use { input.copyTo(it) }
+                extractTarGz(tmp, rootfsDir)
+                tmp.delete()
+            }
+            Log.i(TAG, "Alpine rootfs extracted to ${rootfsDir.absolutePath}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "rootfs bootstrap failed", e)
+            bootstrapped.set(false)
+            false
+        }
+    }
+
+    fun isAvailable(): Boolean =
+        prootBinary.exists() && loaderBinary.exists() && File(rootfsDir, "bin/busybox").exists()
+
+    /**
+     * Runs [command] *inside* the chroot via proot. Blocks until it exits.
+     * Returns the process exit code, or -1 on failure.
+     */
+    fun run(command: List<String>, workdir: String? = null): Int {
+        if (!isAvailable()) {
+            Log.w(TAG, "sandbox not available; refusing to run $command")
+            return -1
+        }
+        val argv = buildProotCommand(command, workdir)
+        Log.d(TAG, "exec: ${argv.joinToString(" ")}")
+        return runProcess(argv)
+    }
+
+    /**
+     * Same as [run] but returns captured stdout. ponytail: ProcessBuilder
+     * redirectErrorStream handles the common "I want the output" case so we
+     * don't need a second stream-pump implementation.
+     */
+    fun runCapture(command: List<String>, workdir: String? = null): String {
+        if (!isAvailable()) return ""
+        val argv = buildProotCommand(command, workdir)
+        return ProcessBuilder(argv)
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .start()
+            .inputStream.bufferedReader().use { it.readText() }
+    }
+
+    /**
+     * Mirrors OpenMinis PRootKernel.buildProotCommand exactly:
+     * `<proot> -0 --link2symlink -r <rootfs> -b /dev -b /proc -b /sys -w <cwd>
+     *          [-b <host>:<linux> ...] /bin/sh -c "<command>"`
+     *
+     * --link2symlink is what lets Alpine's apk/busybox work inside proot
+     * despite Android refusing to let a normal app create hard links.
+     */
+    private fun buildProotCommand(command: List<String>, workdir: String?): List<String> {
+        return mutableListOf(
+            prootBinary.absolutePath,
+            "-0",
+            "--link2symlink",
+            "-r", rootfsDir.absolutePath,
+            "-b", "/dev",
+            "-b", "/proc",
+            "-b", "/sys",
+            // Android mounts a world-writable tmpfs here; apk(8) needs a writable
+            // /tmp, and we want the agent's own files visible as /home/neon.
+            "-b", "${context.cacheDir.absolutePath}:/tmp",
+            "-b", "${context.filesDir.absolutePath}:/home/neon",
+            "-w", workdir ?: "/home/neon",
+            "--kill-on-exit",
+            "/bin/sh", "-c"
+        ).apply {
+            add(command.joinToString(" "))
+        }.toList()
+    }
+
+    private fun runProcess(argv: List<String>): Int {
+        val pb = ProcessBuilder(argv).redirectErrorStream(true)
+        val proc = pb.start()
+        val out = StringBuilder()
+        Thread {
+            proc.inputStream.bufferedReader().forEachLine { out.appendLine(it) }
+        }.start()
+        val code = proc.waitFor()
+        if (out.isNotEmpty()) Log.d(TAG, out.toString().trim())
+        return code
+    }
+
+    private fun extractTarGz(tarGz: File, dest: File) {
+        // ponytail: extracting tar.gz without adding a dependency — zlib is in
+        // the JDK (java.util.zip), and tar is a simple enough format for a
+        // minimal reader. OpenMinis uses libarchive; we read it by hand.
+        java.util.zip.GZIPInputStream(tarGz.inputStream()).use { gz ->
+            extractTar(gz, dest)
+        }
+    }
+
+    /** Minimal POSIX-tar stream reader (ustar + GNU/longname). */
+    private fun extractTar(stream: java.io.InputStream, dest: File) {
+        val buf = ByteArray(512)
+        var pendingName: String? = null
+        while (true) {
+            var n = 0
+            while (n < 512) {
+                val r = stream.read(buf, n, 512 - n)
+                if (r <= 0) return
+                n += r
+            }
+            if (buf.all { it == 0.toByte() }) return
+
+            val rawName = pendingName ?: String(buf, 0, 100).trimEnd('\u0000').trim()
+            pendingName = null
+            if (rawName.isEmpty()) continue
+
+            val type = buf[156].toInt().toChar()
+            val sizeOct = String(buf, 124, 12).trim { it == ' ' || it == '\u0000' }
+            val size = if (sizeOct.isEmpty()) 0L else sizeOct.toLong(8)
+
+            // GNU longname entry — the real filename follows as file data.
+            if (type == 'L') {
+                val nameBuf = ByteArray(size.toInt().coerceAtMost(4096))
+                var off = 0
+                while (off < nameBuf.size) {
+                    val r = stream.read(nameBuf, off, nameBuf.size - off)
+                    if (r <= 0) break
+                    off += r
+                }
+                skipPad(stream, size)
+                pendingName = String(nameBuf, 0, off).trimEnd('\u0000')
+                continue
+            }
+
+            val safePath = sanitize(rawName) ?: run { skipFully(stream, size); continue }
+            val target = File(dest, safePath)
+
+            when (type) {
+                '5' -> target.mkdirs()
+                '2' -> { // symlink
+                    target.parentFile?.mkdirs()
+                    val linkName = String(buf, 157, 100).trimEnd('\u0000')
+                    runCatching { target.delete() }
+                    // Writing a symlink needs NIO; fall back to a plain file copy
+                    // of nothing if the platform refuses.
+                    try {
+                        java.nio.file.Files.createSymbolicLink(
+                            target.toPath(), java.nio.file.Paths.get(linkName)
+                        )
+                    } catch (e: Exception) {
+                        Log.d(TAG, "symlink skipped: $safePath -> $linkName")
+                    }
+                }
+                else -> {
+                    target.parentFile?.mkdirs()
+                    target.outputStream().use { out ->
+                        var left = size
+                        val chunk = ByteArray(8192)
+                        while (left > 0) {
+                            val want = minOf(chunk.size.toLong(), left).toInt()
+                            val r = stream.read(chunk, 0, want)
+                            if (r <= 0) break
+                            out.write(chunk, 0, r)
+                            left -= r
+                        }
+                    }
+                    // Keep executables executable.
+                    if (buf[156].toInt() != 0) {
+                        val mode = String(buf, 100, 8).trim().takeIf { it.isNotEmpty() }
+                        mode?.toLongOrNull(8)?.let { m ->
+                            target.setExecutable(m and 0x100L != 0L, false)
+                        }
+                    }
+                }
+            }
+            skipPad(stream, size)
+        }
+    }
+
+    private fun skipPad(stream: java.io.InputStream, size: Long) {
+        val rem = size % 512
+        if (rem > 0) skipFully(stream, 512 - rem)
+    }
+
+    private fun skipFully(stream: java.io.InputStream, n: Long) {
+        var left = n
+        while (left > 0) {
+            val r = stream.skip(left)
+            if (r <= 0) break
+            left -= r
+        }
+    }
+
+    /**
+     * Blocks path escape — any entry containing .. or an absolute path is
+     * dropped rather than written outside [dest].
+     */
+    private fun sanitize(name: String): String? {
+        if (name.startsWith("/")) return null
+        if (name.contains("..")) return null
+        return name
+    }
+}

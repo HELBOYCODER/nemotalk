@@ -25,10 +25,12 @@ import com.helboy.nemotalk.data.PreferencesManager
 import com.helboy.nemotalk.model.ChatMessage
 import com.helboy.nemotalk.model.Conversation
 import com.helboy.nemotalk.network.NvidiaApiClient
+import com.helboy.nemotalk.sandbox.SandboxManager
 import com.helboy.nemotalk.speech.SpeechRecognitionHelper
 import com.helboy.nemotalk.speech.TextToSpeechHelper
 import com.helboy.nemotalk.ui.components.ChatListDrawer
 import com.helboy.nemotalk.ui.screens.ChatScreen
+import com.helboy.nemotalk.ui.screens.SandboxScreen
 import com.helboy.nemotalk.ui.screens.SettingsScreen
 import com.helboy.nemotalk.ui.screens.VoiceHudScreen
 import com.helboy.nemotalk.ui.theme.DarkBackground
@@ -38,7 +40,8 @@ import kotlinx.coroutines.launch
 enum class AppScreen {
     CHAT,
     VOICE_HUD,
-    SETTINGS
+    SETTINGS,
+    SANDBOX
 }
 
 @Composable
@@ -51,6 +54,7 @@ fun NeMoTalkApp() {
     val speechHelper = remember { SpeechRecognitionHelper(context) }
     val ttsHelper = remember { TextToSpeechHelper(context) }
     val database = remember { ChatDatabase(context) }
+    val sandbox = remember { SandboxManager(context) }
 
     // Apply the in-app proxy (ZeroNet/Zray on 127.0.0.1) to every NeMoTalk
     // client the moment preferences load or the proxy settings change.
@@ -160,13 +164,23 @@ fun NeMoTalkApp() {
 
         isThinking = true
         coroutineScope.launch {
+            // ponytail: recall is keyed off the user's latest line, so the model
+            // only pulls facts relevant to what's actually being asked. FTS keeps
+            // this fast even at thousands of stored memories.
+            val recalled = try {
+                database.recall(messages.lastOrNull { it.isUser }?.content.orEmpty())
+            } catch (e: Exception) {
+                emptyList()
+            }
+
             val result = apiClient.sendMessage(
                 apiKey = prefs.apiKey,
                 model = activeModelId,
                 messages = messages,
                 systemPrompt = prefs.systemPrompt,
                 responseLanguage = prefs.responseLanguage,
-                currentContext = context
+                currentContext = context,
+                memories = recalled
             )
 
             isThinking = false
@@ -356,7 +370,18 @@ fun NeMoTalkApp() {
                         onBack = {
                             activeModelId = prefs.selectedModel
                             currentScreen = AppScreen.CHAT
+                        },
+                        onOpenSandbox = {
+                            currentScreen = AppScreen.SANDBOX
                         }
+                    )
+                }
+
+                AppScreen.SANDBOX -> {
+                    SandboxScreen(
+                        sandbox = sandbox,
+                        database = database,
+                        onClose = { currentScreen = AppScreen.SETTINGS }
                     )
                 }
             }

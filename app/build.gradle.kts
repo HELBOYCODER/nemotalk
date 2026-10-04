@@ -12,11 +12,14 @@ android {
         applicationId = "com.helboy.nemotalk"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.0.0"
+        versionCode = 7
+        versionName = "2.1.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            // The embedded proot sandbox ships prebuilt ARM64 binaries only;
+            // listing other ABIs would still install this APK on them and then
+            // fail to find the loader. Restrict install to where it can run.
+            abiFilters += listOf("arm64-v8a")
         }
     }
 

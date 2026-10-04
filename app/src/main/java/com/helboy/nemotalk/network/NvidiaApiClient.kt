@@ -71,7 +71,9 @@ class NvidiaApiClient {
         messages: List<ChatMessage>,
         systemPrompt: String,
         responseLanguage: String = "fa",
-        currentContext: Context? = null
+        currentContext: Context? = null,
+        // Long-term recall. Blank list = no memory panel in use.
+        memories: List<String> = emptyList()
     ): Result<SendMessageResult> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
@@ -80,12 +82,24 @@ class NvidiaApiClient {
         }
 
         val effectivePrompt = when (responseLanguage) {
-            "fa" -> if (systemPrompt.isNotBlank()) {
-                "$systemPrompt\n\n[دستور قطعی: پاسخ شما باید حتماً و ۱۰۰٪ به زبان فارسی روان، سلیس و دلنشین باشد. به هیچ عنوان انگلیسی پاسخ ندهید.]"
-            } else {
-                "شما دستیار صوتی و هوشمند آوانمو هستید. تمام پاسخ‌های شما باید ۱۰۰٪ به زبان فارسی شیوا و روان باشد."
+            "fa" -> {
+                val memoryBlock = if (memories.isNotEmpty()) {
+                    "\n\n[حافظه بلندمدت شما — این حقایق را از گفتگوهای قبلی آموخته‌اید و باید در پاسخ‌های خود لحاظ کنید:]\n" +
+                        memories.joinToString("\n") { "- $it" }
+                } else ""
+                if (systemPrompt.isNotBlank()) {
+                    "$systemPrompt$memoryBlock\n\n[دستور قطعی: پاسخ شما باید حتماً و ۱۰۰٪ به زبان فارسی روان، سلیس و دلنشین باشد. به هیچ عنوان انگلیسی پاسخ ندهید.]"
+                } else {
+                    "شما دستیار صوتی و هوشمند آوانمو هستید. تمام پاسخ‌های شما باید ۱۰۰٪ به زبان فارسی شیوا و روان باشد.$memoryBlock"
+                }
             }
-            "en" -> "$systemPrompt\n\n[Instruction: Reply strictly in English.]"
+            "en" -> {
+                val memoryBlock = if (memories.isNotEmpty()) {
+                    "\n\n[Long-term memory — facts you learned in earlier conversations; honour them when replying:]\n" +
+                        memories.joinToString("\n") { "- $it" }
+                } else ""
+                "$systemPrompt$memoryBlock\n\n[Instruction: Reply strictly in English.]"
+            }
             else -> systemPrompt
         }
 

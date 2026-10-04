@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.OpenInNew
@@ -100,6 +101,7 @@ fun SettingsScreen(
     apiClient: NvidiaApiClient,
     ttsHelper: TextToSpeechHelper,
     onBack: () -> Unit,
+    onOpenSandbox: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -912,6 +914,25 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("اتصال سریع زیرونت (۱۲۷.۰.۰.۱:۱۰۸۰۸)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Open the embedded Linux sandbox + long-term memory panel
+                    OutlinedButton(
+                        onClick = onOpenSandbox,
+                        modifier = Modifier.fillMaxWidth(),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NvidiaGreen.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = NvidiaNeon
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("سندباکس لینوکس داخلی + حافظه بلندمدت", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = NvidiaNeon)
                     }
                 }
             }
