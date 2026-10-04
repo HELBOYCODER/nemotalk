@@ -12,8 +12,8 @@ android {
         applicationId = "com.helboy.nemotalk"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "2.0.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -74,6 +74,12 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.json:json:20240303")
+
+    // Document File Access (for image/attachment picking)
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // Image loading (photo attachments in chat bubbles)
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     testImplementation("junit:junit:4.13.2")
 }

@@ -1,6 +1,9 @@
 package com.helboy.nemotalk.network
 
+import android.content.Context
+import com.helboy.nemotalk.data.PreferencesManager
 import com.helboy.nemotalk.model.ChatMessage
+import com.helboy.nemotalk.model.visionFallbackFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -21,15 +24,27 @@ data class SendMessageResult(
 
 class NvidiaApiClient {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
-
+    private var client: OkHttpClient = buildClient(null)
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val endpointUrl = "https://integrate.api.nvidia.com/v1/chat/completions"
     private val modelsUrl = "https://integrate.api.nvidia.com/v1/models"
+
+    /**
+     * Rebuild the OkHttp client against [prefs] so a proxy toggle in Settings
+     * takes effect for every subsequent request. Kept cheap: OkHttp reuses
+     * connection pools across builders with the same address set.
+     */
+    fun updateProxySettings(prefs: PreferencesManager?) {
+        client = buildClient(prefs)
+    }
+
+    private fun buildClient(prefs: PreferencesManager?): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+        return ProxySupport.applyTo(builder, prefs ?: return builder.build()).build()
+    }
 
     // High-availability fallback chain for NVIDIA API catalog
     private val fallbackModels = listOf(
@@ -41,12 +56,22 @@ class NvidiaApiClient {
         "openai/gpt-oss-20b"
     )
 
+    // Vision-capable fallback chain (NVIDIA NIM multimodal models) — ordered by quality
+    private val visionModels = listOf(
+        "meta/llama-3.2-90b-vision-instruct",
+        "meta/llama-3.2-11b-vision-instruct",
+        "nvidia/neva-22b"
+    )
+
+    private val MAX_HISTORY_MESSAGES = 12
+
     suspend fun sendMessage(
         apiKey: String,
         model: String,
         messages: List<ChatMessage>,
         systemPrompt: String,
-        responseLanguage: String = "fa"
+        responseLanguage: String = "fa",
+        currentContext: Context? = null
     ): Result<SendMessageResult> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
@@ -64,15 +89,25 @@ class NvidiaApiClient {
             else -> systemPrompt
         }
 
-        // 1. Try requested model first
-        val firstAttempt = executeRequest(apiKey, model, messages, effectivePrompt)
+        // Detect any image attached to the latest user message → vision mode
+        val lastUserImage = messages.lastOrNull { it.isUser && it.imageUri != null }?.imageUri
+        val isVisionRequest = lastUserImage != null && currentContext != null
+
+        val visionModel = if (isVisionRequest) visionFallbackFor(model) else model
+
+        // 1. Try (vision model if image present, else requested model) first
+        val firstAttempt = if (isVisionRequest && currentContext != null) {
+            executeVisionRequest(apiKey, visionModel, messages, effectivePrompt, currentContext, lastUserImage!!)
+        } else {
+            executeRequest(apiKey, model, messages, effectivePrompt)
+        }
         if (firstAttempt.isSuccess) {
             val (content, latency) = firstAttempt.getOrThrow()
             return@withContext Result.success(
                 SendMessageResult(
                     content = content,
                     latencyMs = latency,
-                    modelUsed = model,
+                    modelUsed = visionModel,
                     wasFallback = false
                 )
             )
@@ -93,10 +128,15 @@ class NvidiaApiClient {
         }
 
         // 2. Auto-fallback chain: Try fallback models until one works!
-        for (fallbackModel in fallbackModels) {
-            if (fallbackModel == model) continue
+        val chain = if (isVisionRequest) visionModels else fallbackModels
+        for (fallbackModel in chain) {
+            if (fallbackModel == visionModel) continue
 
-            val fallbackAttempt = executeRequest(apiKey, fallbackModel, messages, effectivePrompt)
+            val fallbackAttempt = if (isVisionRequest && currentContext != null) {
+                executeVisionRequest(apiKey, fallbackModel, messages, effectivePrompt, currentContext, lastUserImage!!)
+            } else {
+                executeRequest(apiKey, fallbackModel, messages, effectivePrompt)
+            }
             if (fallbackAttempt.isSuccess) {
                 val (content, latency) = fallbackAttempt.getOrThrow()
                 return@withContext Result.success(
@@ -112,8 +152,132 @@ class NvidiaApiClient {
 
         // If all fallbacks failed, report clear error
         Result.failure(
-            IOException("مدل '$model' در اکانت ان‌ویدیا شما در دسترس نیست و مدل‌های جایگزین نیز پاسخ ندادند. لطفاً در تنظیمات کلید را تست یا مدل دیگری انتخاب کنید.")
+            IOException("مدل '$visionModel' در اکانت ان‌ویدیا شما در دسترس نیست و مدل‌های جایگزین نیز پاسخ ندادند. لطفاً در تنظیمات کلید را تست یا مدل دیگری انتخاب کنید.")
         )
+    }
+
+    private fun executeVisionRequest(
+        apiKey: String,
+        model: String,
+        messages: List<ChatMessage>,
+        systemPrompt: String,
+        context: Context,
+        imageUri: String
+    ): Result<Pair<String, Long>> {
+        return try {
+            val startTime = System.currentTimeMillis()
+
+            // Read & base64-encode the image from the device
+            val base64Image = readImageAsBase64(context, imageUri)
+            if (base64Image.isBlank()) {
+                return Result.failure(IOException("امکان خواندن تصویر انتخاب شده وجود ندارد."))
+            }
+
+            val requestJson = buildVisionRequestJson(messages, systemPrompt, base64Image, model)
+
+            val request = Request.Builder()
+                .url(endpointUrl)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .post(requestJson.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    val apiMessage = JSONObject(responseBody).optJSONObject("error")
+                        ?.optString("detail") ?: ""
+                    return Result.failure(
+                        IOException("خطای سرور ان‌ویدیا (${response.code}): $apiMessage")
+                    )
+                }
+
+                val (content, finishReason) = parseChatCompletion(JSONObject(responseBody))
+                if (content.isBlank()) {
+                    return Result.failure(IOException("پاسخ خالی از مدل تصویری دریافت شد ($finishReason)"))
+                }
+                Result.success(Pair(content, System.currentTimeMillis() - startTime))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun readImageAsBase64(context: Context, imageUri: String): String {
+        return try {
+            val uri = android.net.Uri.parse(imageUri)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val bytes = input.readBytes()
+                android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            } ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun buildVisionRequestJson(
+        messages: List<ChatMessage>,
+        systemPrompt: String,
+        base64Image: String,
+        model: String
+    ): String {
+        val jsonArray = JSONArray()
+
+        // System message
+        jsonArray.put(JSONObject().apply {
+            put("role", "system")
+            put("content", systemPrompt)
+        })
+
+        // Conversation history (text only, images are not re-sent for previous turns)
+        messages.takeLast(MAX_HISTORY_MESSAGES).forEach { msg ->
+            jsonArray.put(JSONObject().apply {
+                put("role", if (msg.isUser) "user" else "assistant")
+                if (msg.isUser && msg.imageUri != null) {
+                    // Multimodal content: image + text
+                    put("content", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().apply {
+                                put("url", "data:image/jpeg;base64,$base64Image")
+                            })
+                        })
+                        if (msg.content.isNotBlank()) {
+                            put(JSONObject().apply {
+                                put("type", "text")
+                                put("text", msg.content)
+                            })
+                        }
+                    })
+                } else {
+                    put("content", msg.content)
+                }
+            })
+        }
+
+        val root = JSONObject().apply {
+            put("model", model)
+            put("messages", jsonArray)
+            put("temperature", 0.6)
+            put("top_p", 0.9)
+            put("max_tokens", 2048)
+            put("stream", false)
+        }
+        return root.toString()
+    }
+
+    private fun parseChatCompletion(json: JSONObject): Pair<String, String> {
+        val choices = json.optJSONArray("choices")
+        if (choices != null && choices.length() > 0) {
+            val firstChoice = choices.getJSONObject(0)
+            val messageObj = firstChoice.optJSONObject("message")
+            val content = messageObj?.optString("content") ?: ""
+            val finishReason = firstChoice.optString("finish_reason", "")
+            return Pair(content.trim(), finishReason)
+        }
+        return Pair("", "")
     }
 
     private fun executeRequest(

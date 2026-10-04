@@ -1,10 +1,10 @@
 package com.helboy.nemotalk.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import com.helboy.nemotalk.data.PreferencesManager
 import com.helboy.nemotalk.model.NvidiaModel
 import com.helboy.nemotalk.network.NvidiaApiClient
+import com.helboy.nemotalk.network.ProxySupport
 import com.helboy.nemotalk.speech.TextToSpeechHelper
 import com.helboy.nemotalk.ui.theme.DarkBackground
 import com.helboy.nemotalk.ui.theme.DarkBorder
@@ -117,6 +119,13 @@ fun SettingsScreen(
     var geminiApiKey by remember { mutableStateOf(prefs.geminiApiKey) }
     var isGeminiKeyVisible by remember { mutableStateOf(false) }
     var geminiVoice by remember { mutableStateOf(prefs.geminiVoice) }
+
+    // In-app proxy state (ZeroNet / Zray on 127.0.0.1)
+    var proxyEnabled by remember { mutableStateOf(prefs.proxyEnabled) }
+    var proxyType by remember { mutableStateOf(prefs.proxyType.name.lowercase()) }
+    var proxyHost by remember { mutableStateOf(prefs.proxyAddress) }
+    var proxySocksPort by remember { mutableStateOf(prefs.proxyPort) }
+    var proxyHttpPort by remember { mutableStateOf(prefs.proxyHttpPort) }
 
     val hasPersianVoice by ttsHelper.hasPersianVoice.collectAsState()
 
@@ -729,6 +738,177 @@ fun SettingsScreen(
                     unfocusedTextColor = TextPrimary
                 )
             )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // SECTION 6: IN-APP PROXY (ZeroNet / Zray)
+        SettingsCard(title = "پروکسی داخلی (عبور از فیلترینگ)", icon = Icons.Default.VpnKey) {
+            // Master toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "فعال‌سازی پروکسی داخلی",
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = if (proxyEnabled)
+                            "ترافیک NeMoTalk از طریق ${ProxySupport.socksEndpoint(prefs)} عبور می‌کند — بقیه سیستم دست‌نخورده می‌ماند"
+                        else
+                            "فقط ترافیک همین اپ پروکسی می‌شود؛ کل سیستم تونل نمی‌شود",
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                }
+                Switch(
+                    checked = proxyEnabled,
+                    onCheckedChange = {
+                        proxyEnabled = it
+                        prefs.proxyEnabled = it
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = NvidiaNeon,
+                        checkedTrackColor = NvidiaGreen.copy(alpha = 0.5f)
+                    )
+                )
+            }
+
+            AnimatedVisibility(visible = proxyEnabled) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Proxy type: SOCKS5 vs HTTP
+                    Text(
+                        text = "نوع پروکسی",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            PreferencesManager.PROXY_TYPE_SOCKS to "SOCKS5",
+                            PreferencesManager.PROXY_TYPE_HTTP to "HTTP"
+                        ).forEach { (code, label) ->
+                            Surface(
+                                onClick = {
+                                    proxyType = code
+                                    prefs.proxyType = if (code == PreferencesManager.PROXY_TYPE_HTTP)
+                                        java.net.Proxy.Type.HTTP else java.net.Proxy.Type.SOCKS
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                color = if (proxyType == code) Color(0xFF132218) else Color(0xFF121620),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (proxyType == code) NvidiaGreen else DarkBorder
+                                )
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (proxyType == code) NvidiaNeon else TextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(vertical = 9.dp, horizontal = 12.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = proxyHost,
+                        onValueChange = {
+                            proxyHost = it
+                            prefs.proxyAddress = it
+                        },
+                        label = { Text("آدرس (خالی = ۱۲۷.۰.۰.۱)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NvidiaGreen,
+                            unfocusedBorderColor = DarkBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = if (proxyType == PreferencesManager.PROXY_TYPE_HTTP) proxyHttpPort else proxySocksPort,
+                        onValueChange = {
+                            if (proxyType == PreferencesManager.PROXY_TYPE_HTTP) {
+                                proxyHttpPort = it
+                                prefs.proxyHttpPort = it
+                            } else {
+                                proxySocksPort = it
+                                prefs.proxyPort = it
+                            }
+                        },
+                        label = {
+                            Text(
+                                if (proxyType == PreferencesManager.PROXY_TYPE_HTTP)
+                                    "پورت HTTP (پیش‌فرض ۱۰۸۰۹)"
+                                else
+                                    "پورت SOCKS5 (پیش‌فرض ۱۰۸۰۸)"
+                            )
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NvidiaGreen,
+                            unfocusedBorderColor = DarkBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Quick connect to a running ZeroNet/Zray instance
+                    Button(
+                        onClick = {
+                            proxyHost = "127.0.0.1"
+                            proxySocksPort = "10808"
+                            proxyHttpPort = "10809"
+                            prefs.proxyAddress = "127.0.0.1"
+                            prefs.proxyPort = "10808"
+                            prefs.proxyHttpPort = "10809"
+                            proxyType = PreferencesManager.PROXY_TYPE_SOCKS
+                            prefs.proxyType = java.net.Proxy.Type.SOCKS
+                            proxyEnabled = true
+                            prefs.proxyEnabled = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NvidiaGreen,
+                            contentColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("اتصال سریع زیرونت (۱۲۷.۰.۰.۱:۱۰۸۰۸)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

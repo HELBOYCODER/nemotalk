@@ -6,6 +6,8 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.util.Base64
 import android.util.Log
+import com.helboy.nemotalk.data.PreferencesManager
+import com.helboy.nemotalk.network.ProxySupport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,15 +29,23 @@ import java.util.concurrent.TimeUnit
 class GeminiVoiceClient(private val context: Context) {
 
     private val tag = "NeMoTalkGeminiVoice"
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
+    private var client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
+
+    /** Mirror of [NvidiaApiClient.updateProxySettings] for the TTS endpoint. */
+    fun updateProxySettings(prefs: PreferencesManager?) {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+        client = ProxySupport.applyTo(builder, prefs ?: return).build()
+    }
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val scope = CoroutineScope(Dispatchers.Default + Job())
-
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
@@ -56,7 +66,7 @@ class GeminiVoiceClient(private val context: Context) {
         apiKey: String,
         text: String,
         voiceName: String = "Aoede",
-        model: String = "gemini-2.0-flash"
+        model: String = "gemini-2.5-flash-preview-tts"
     ): Result<ByteArray> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("کلید API جمینای وارد نشده است."))
@@ -68,9 +78,10 @@ class GeminiVoiceClient(private val context: Context) {
         }
 
         try {
+            // ponytail: 2.5-flash native TTS needs style instructions to be spoken, not read as content.
+            // A bare "style" key makes the model read the style aloud; wrapping it as a user instruction
+            // keeps it out of the synthesized audio while still steering prosody.
             val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
-
-            val promptText = "Read the following text aloud with natural, authentic Persian pronunciation, clear enunciation of words, correct short vowels, warm emotional cadence, and expressive human inflection:\n\n$cleanText"
 
             val requestJson = JSONObject().apply {
                 put("contents", JSONArray().apply {
@@ -78,7 +89,7 @@ class GeminiVoiceClient(private val context: Context) {
                         put("role", "user")
                         put("parts", JSONArray().apply {
                             put(JSONObject().apply {
-                                put("text", promptText)
+                                put("text", "Style: Clear, warm and professional.\n\n$cleanText")
                             })
                         })
                     })
@@ -107,8 +118,11 @@ class GeminiVoiceClient(private val context: Context) {
                 val responseBody = response.body?.string() ?: ""
 
                 if (!response.isSuccessful) {
+                    val apiMessage = try {
+                        JSONObject(responseBody).optJSONObject("error")?.optString("message", "") ?: ""
+                    } catch (_: Exception) { "" }
                     val errMsg = when (response.code) {
-                        400 -> "درخواست نامعتبر به جمینای (کد ۴۰۰)"
+                        400 -> "درخواست نامعتبر به جمینای (کد ۴۰۰)${if (apiMessage.isNotBlank()) "\n$apiMessage" else ""}"
                         403 -> "کلید جمینای نامعتبر یا محدود شده است (کد ۴۰۳)"
                         429 -> "محدودیت تعداد درخواست جمینای (Rate Limit)"
                         else -> "خطای سرویس جمینای (${response.code})"

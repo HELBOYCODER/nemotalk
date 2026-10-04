@@ -2,13 +2,14 @@ package com.helboy.nemotalk.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,10 +30,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.helboy.nemotalk.model.ChatMessage
 import com.helboy.nemotalk.ui.theme.AiBubble
 import com.helboy.nemotalk.ui.theme.DarkBorder
@@ -143,6 +146,23 @@ fun MessageBubble(
                             fontSize = 10.sp
                         )
                     }
+                }
+            }
+
+            // Attached image (vision / photo messages)
+            if (message.imageUri != null) {
+                AsyncImage(
+                    model = message.imageUri,
+                    contentDescription = "تصویر ضمیمه",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF101820))
+                )
+                if (message.content.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
             }
 

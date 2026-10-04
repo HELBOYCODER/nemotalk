@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -19,11 +20,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.helboy.nemotalk.data.ChatDatabase
 import com.helboy.nemotalk.data.PreferencesManager
 import com.helboy.nemotalk.model.ChatMessage
+import com.helboy.nemotalk.model.Conversation
 import com.helboy.nemotalk.network.NvidiaApiClient
 import com.helboy.nemotalk.speech.SpeechRecognitionHelper
 import com.helboy.nemotalk.speech.TextToSpeechHelper
+import com.helboy.nemotalk.ui.components.ChatListDrawer
 import com.helboy.nemotalk.ui.screens.ChatScreen
 import com.helboy.nemotalk.ui.screens.SettingsScreen
 import com.helboy.nemotalk.ui.screens.VoiceHudScreen
@@ -46,9 +50,20 @@ fun NeMoTalkApp() {
     val apiClient = remember { NvidiaApiClient() }
     val speechHelper = remember { SpeechRecognitionHelper(context) }
     val ttsHelper = remember { TextToSpeechHelper(context) }
+    val database = remember { ChatDatabase(context) }
+
+    // Apply the in-app proxy (ZeroNet/Zray on 127.0.0.1) to every NeMoTalk
+    // client the moment preferences load or the proxy settings change.
+    LaunchedEffect(prefs.proxyEnabled, prefs.proxyType, prefs.proxyAddress, prefs.proxyPort, prefs.proxyHttpPort) {
+        apiClient.updateProxySettings(prefs)
+        ttsHelper.geminiClient.updateProxySettings(prefs)
+    }
 
     var currentScreen by remember { mutableStateOf(AppScreen.CHAT) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
+    val conversations = remember { mutableStateListOf<Conversation>() }
+    var currentConversationId by remember { mutableStateOf("") }
+    var showChatDrawer by remember { mutableStateOf(false) }
 
     var isThinking by remember { mutableStateOf(false) }
     var currentlySpeakingId by remember { mutableStateOf<String?>(null) }
@@ -77,12 +92,61 @@ fun NeMoTalkApp() {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Function to send message to NVIDIA NeMo API with Persian enforcement & auto-fallback
-    fun handleSendMessage(userText: String, isFromVoice: Boolean = false) {
-        if (userText.isBlank()) return
+    // ---------- Conversation Management (chat memory & chat list) ----------
+    fun updateConversationLastMessage(convId: String, lastMsg: String) {
+        try {
+            val conv = conversations.firstOrNull { it.id == convId }
+            if (conv != null) {
+                val updated = conv.copy(lastMessage = lastMsg, lastMessageTime = System.currentTimeMillis())
+                val idx = conversations.indexOf(conv)
+                conversations[idx] = updated
+                database.updateConversation(updated)
+            }
+        } catch (_: Exception) {
+        }
+    }
 
-        val userMessage = ChatMessage(content = userText, isUser = true)
+    fun createNewConversation() {
+        val newConv = Conversation(
+            id = java.util.UUID.randomUUID().toString(),
+            title = "گفتگوی جدید",
+            createdAt = System.currentTimeMillis()
+        )
+        database.insertConversation(newConv)
+        conversations.clear()
+        conversations.addAll(database.getAllConversations())
+        currentConversationId = newConv.id
+        messages.clear()
+    }
+
+    fun switchToConversation(convId: String) {
+        currentConversationId = convId
+        messages.clear()
+        messages.addAll(database.getMessagesForConversation(convId))
+    }
+
+    // Load conversations on startup
+    LaunchedEffect(Unit) {
+        val allConvs = database.getAllConversations()
+        conversations.clear()
+        conversations.addAll(allConvs)
+        if (allConvs.isEmpty()) {
+            createNewConversation()
+        } else {
+            currentConversationId = allConvs.first().id
+            messages.clear()
+            messages.addAll(database.getMessagesForConversation(allConvs.first().id))
+        }
+    }
+    // Function to send message to NVIDIA NeMo API with Persian enforcement & auto-fallback
+    fun handleSendMessage(userText: String, isFromVoice: Boolean = false, imageUri: String? = null) {
+        if (userText.isBlank() && imageUri == null) return
+
+        val userMessage = ChatMessage(content = userText, isUser = true, imageUri = imageUri)
         messages.add(userMessage)
+        // Persist user message (chat memory)
+        database.insertMessage(currentConversationId, userMessage)
+        updateConversationLastMessage(currentConversationId, if (imageUri != null && userText.isBlank()) "🖼️ تصویر" else userText)
 
         if (prefs.apiKey.isBlank()) {
             val errorMsg = ChatMessage(
@@ -101,7 +165,8 @@ fun NeMoTalkApp() {
                 model = activeModelId,
                 messages = messages,
                 systemPrompt = prefs.systemPrompt,
-                responseLanguage = prefs.responseLanguage
+                responseLanguage = prefs.responseLanguage,
+                currentContext = context
             )
 
             isThinking = false
@@ -124,6 +189,9 @@ fun NeMoTalkApp() {
                         latencyMs = latency
                     )
                     messages.add(aiMessage)
+                    // Persist to database (chat memory)
+                    database.insertMessage(currentConversationId, aiMessage)
+                    updateConversationLastMessage(currentConversationId, aiText)
                     aiResponseVoiceText = aiText
 
                     // Speak out automatically if enabled or in Voice HUD mode
@@ -206,7 +274,7 @@ fun NeMoTalkApp() {
                             activeModelId = newModelId
                             prefs.selectedModel = newModelId
                         },
-                        onSendMessage = { text -> handleSendMessage(text, isFromVoice = false) },
+                        onSendMessage = { text, image -> handleSendMessage(text, isFromVoice = false, imageUri = image) },
                         onVoiceHudOpen = {
                             currentScreen = AppScreen.VOICE_HUD
                             startListeningWithPermission(fromVoiceHud = true)
@@ -217,6 +285,14 @@ fun NeMoTalkApp() {
                             } else {
                                 startListeningWithPermission(fromVoiceHud = false)
                             }
+                        },
+                        onNewChat = {
+                            ttsHelper.stop()
+                            currentlySpeakingId = null
+                            createNewConversation()
+                        },
+                        onOpenChatList = {
+                            showChatDrawer = true
                         },
                         onSpeakMessage = { msg ->
                             ttsHelper.stop()
@@ -236,6 +312,7 @@ fun NeMoTalkApp() {
                             ttsHelper.stop()
                             currentlySpeakingId = null
                             messages.clear()
+                            database.clearConversationMessages(currentConversationId)
                         },
                         onOpenSettings = {
                             currentScreen = AppScreen.SETTINGS
@@ -283,6 +360,38 @@ fun NeMoTalkApp() {
                     )
                 }
             }
+        }
+
+        // Chat List Drawer ( swipe in from left edge )
+        if (showChatDrawer) {
+            ChatListDrawer(
+                conversations = conversations,
+                currentConversationId = currentConversationId,
+                onSwitchConversation = { convId ->
+                    ttsHelper.stop()
+                    currentlySpeakingId = null
+                    switchToConversation(convId)
+                    showChatDrawer = false
+                },
+                onNewChat = {
+                    createNewConversation()
+                    showChatDrawer = false
+                },
+                onDeleteConversation = { convId ->
+                    database.deleteConversation(convId)
+                    if (convId == currentConversationId) {
+                        val remaining = database.getAllConversations()
+                        if (remaining.isNotEmpty()) {
+                            switchToConversation(remaining.first().id)
+                        } else {
+                            createNewConversation()
+                        }
+                    }
+                    conversations.clear()
+                    conversations.addAll(database.getAllConversations())
+                },
+                onDismiss = { showChatDrawer = false }
+            )
         }
     }
 }

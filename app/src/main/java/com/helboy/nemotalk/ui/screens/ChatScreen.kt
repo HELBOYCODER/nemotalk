@@ -1,10 +1,8 @@
 package com.helboy.nemotalk.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,10 +28,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Send
@@ -62,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +78,7 @@ import com.helboy.nemotalk.ui.theme.DarkBackground
 import com.helboy.nemotalk.ui.theme.DarkBorder
 import com.helboy.nemotalk.ui.theme.DarkSurface
 import com.helboy.nemotalk.ui.theme.DarkSurfaceElevated
+import com.helboy.nemotalk.ui.theme.ErrorRed
 import com.helboy.nemotalk.ui.theme.NvidiaGreen
 import com.helboy.nemotalk.ui.theme.NvidiaNeon
 import com.helboy.nemotalk.ui.theme.TextMuted
@@ -93,9 +97,11 @@ fun ChatScreen(
     hasApiKey: Boolean,
     selectedModelId: String,
     onModelChange: (String) -> Unit,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, String?) -> Unit,
     onVoiceHudOpen: () -> Unit,
     onMicQuickToggle: () -> Unit,
+    onNewChat: () -> Unit,
+    onOpenChatList: () -> Unit,
     onSpeakMessage: (ChatMessage) -> Unit,
     onStopSpeak: () -> Unit,
     onClearChat: () -> Unit,
@@ -103,11 +109,22 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     var inputText by remember { mutableStateOf("") }
+    var pendingImageUri by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var showModelSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Image picker (Photo Picker on Android 13+, ACTION_GET_CONTENT on older versions)
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            pendingImageUri = uri.toString()
+        }
+    }
 
     // Auto-scroll on new message
     LaunchedEffect(messages.size, isThinking) {
@@ -139,11 +156,24 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Brand icon + Title
+                // Left: Chat List (history) Button + Brand icon + Title
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
+                    // Chat History Drawer Button
+                    IconButton(
+                        onClick = onOpenChatList,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "تاریخچه گفتگوها",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
                     Box(
                         modifier = Modifier
                             .size(34.dp)
@@ -211,8 +241,24 @@ fun ChatScreen(
                     }
                 }
 
-                // Right Actions: Voice HUD Pill & Settings
+                // Right Actions: New Chat, Voice HUD Pill & Settings
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // New Chat Button
+                    IconButton(
+                        onClick = onNewChat,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF162B1D))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddComment,
+                            contentDescription = "گفتگوی جدید",
+                            tint = NvidiaNeon,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
                     // Voice HUD Action Button
                     IconButton(
                         onClick = onVoiceHudOpen,
@@ -281,7 +327,8 @@ fun ChatScreen(
         ) {
             if (messages.isEmpty()) {
                 ResponsiveEmptyChatWelcome(
-                    onPromptSelect = onSendMessage,
+                    onPromptSelect = { prompt -> onSendMessage(prompt, null) },
+                    onAttachImage = { imagePickerLauncher.launch("image/*") },
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
@@ -390,11 +437,40 @@ fun ChatScreen(
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Image Attach Button
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1B2A20))
+                        .border(1.dp, DarkBorder, CircleShape)
+                        .combinedClickable(
+                            onClick = { imagePickerLauncher.launch("image/*") },
+                            onLongClick = { pendingImageUri = null }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (pendingImageUri != null) Icons.Default.CheckCircle else Icons.Default.AddPhotoAlternate,
+                        contentDescription = if (pendingImageUri != null) "تصویر انتخاب شد (لمس طولانی برای حذف)" else "افزودن تصویر",
+                        tint = if (pendingImageUri != null) NvidiaNeon else TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+
                 // Text Input Field
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    placeholder = { Text("پیام خود را بنویسید...", color = TextMuted, fontSize = 13.sp) },
+                    placeholder = {
+                        Text(
+                            text = if (pendingImageUri != null) "توضیح تصویر را بنویسید (اختیاری)..." else "پیام خود را بنویسید...",
+                            color = TextMuted,
+                            fontSize = 13.sp
+                        )
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 6.dp),
@@ -410,12 +486,14 @@ fun ChatScreen(
                 )
 
                 // Voice / Send Action Button (Spacious 46dp touch target)
-                if (inputText.isNotBlank()) {
+                if (inputText.isNotBlank() || pendingImageUri != null) {
                     IconButton(
                         onClick = {
                             val text = inputText.trim()
+                            val image = pendingImageUri
                             inputText = ""
-                            onSendMessage(text)
+                            pendingImageUri = null
+                            onSendMessage(text, image)
                         },
                         modifier = Modifier
                             .size(46.dp)
@@ -545,6 +623,43 @@ fun ChatScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+                // Clear current chat history
+                Surface(
+                    onClick = {
+                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                            showModelSheet = false
+                            onClearChat()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    color = Color(0xFF2A1515),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = null,
+                            tint = ErrorRed,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "پاک کردن تاریخچه این گفتگو",
+                            color = ErrorRed,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -553,6 +668,7 @@ fun ChatScreen(
 @Composable
 fun ResponsiveEmptyChatWelcome(
     onPromptSelect: (String) -> Unit,
+    onAttachImage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -598,6 +714,38 @@ fun ResponsiveEmptyChatWelcome(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Vision / image prompt quick action
+        Surface(
+            onClick = onAttachImage,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp)
+                .clip(RoundedCornerShape(10.dp)),
+            color = Color(0xFF132218),
+            border = androidx.compose.foundation.BorderStroke(1.dp, NvidiaGreen.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddPhotoAlternate,
+                    contentDescription = null,
+                    tint = NvidiaNeon,
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "تحلیل تصویر بدهید (عکس بفرستید)",
+                    color = NvidiaNeon,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         val suggestions = listOf(
             "نِمو، خودت رو معرفی کن و بگو چطور کار می‌کنی؟",
