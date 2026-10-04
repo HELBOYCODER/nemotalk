@@ -5,6 +5,7 @@ import android.content.Intent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.helboy.nemotalk.data.PreferencesManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,7 +22,10 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     private var isInitialized = false
     private val scope = CoroutineScope(Dispatchers.Main + Job())
 
-    // 1. Embedded Neural Persian Speech Engine (Piper VITS Amir INT8)
+    // 1. Gemini Studio Neural Voice Engine (Hyper-realistic & expressive Persian TTS)
+    val geminiClient = GeminiVoiceClient(context)
+
+    // 2. Embedded Neural Persian Speech Engine (Piper VITS Amir INT8 — 100% offline)
     val embeddedEngine = EmbeddedPersianTtsEngine(context)
 
     private val _isSpeaking = MutableStateFlow(false)
@@ -33,12 +37,15 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     private var onDoneCallback: (() -> Unit)? = null
 
     init {
-        // Collect embedded engine speaking state
+        // Collect embedded and gemini speaking states
         scope.launch {
             embeddedEngine.isSpeaking.collect { speaking ->
-                if (speaking) {
-                    _isSpeaking.value = true
-                }
+                if (speaking) _isSpeaking.value = true
+            }
+        }
+        scope.launch {
+            geminiClient.isSpeaking.collect { speaking ->
+                if (speaking) _isSpeaking.value = true
             }
         }
 
@@ -72,7 +79,6 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
     }
 
     private fun checkPersianVoiceAvailability() {
-        // Embedded engine is always ready for Persian
         _hasPersianVoice.value = true
     }
 
@@ -115,20 +121,20 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
 
     fun speak(
         text: String,
-        speechRate: Float = 1.0f,
-        speechPitch: Float = 1.0f,
+        prefs: PreferencesManager,
         forcePersian: Boolean = false,
         onDone: () -> Unit = {}
     ) {
         val cleanText = cleanMarkdownForSpeech(text)
         val isPersian = forcePersian || containsPersianCharacters(cleanText)
 
-        // 1. Primary Engine: If Persian and Embedded Neural Engine is ready, synthesize directly on device!
-        if (isPersian && embeddedEngine.isReady.value) {
+        // 1. If Gemini Voice Engine selected and API key is present: use Google Gemini's hyper-realistic audio!
+        if (prefs.ttsEngineType == "gemini" && prefs.geminiApiKey.isNotBlank()) {
             _isSpeaking.value = true
-            embeddedEngine.speak(
+            geminiClient.speak(
+                apiKey = prefs.geminiApiKey,
                 text = cleanText,
-                speechRate = speechRate,
+                voiceName = prefs.geminiVoice,
                 onDone = {
                     _isSpeaking.value = false
                     onDone()
@@ -137,7 +143,21 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
             return
         }
 
-        // 2. Secondary Engine: Fallback to Android system TextToSpeech
+        // 2. If Persian and Embedded Neural Engine is ready (or Gemini fallback): use embedded Piper Amir INT8
+        if (isPersian && embeddedEngine.isReady.value) {
+            _isSpeaking.value = true
+            embeddedEngine.speak(
+                text = cleanText,
+                speechRate = prefs.speechRate,
+                onDone = {
+                    _isSpeaking.value = false
+                    onDone()
+                }
+            )
+            return
+        }
+
+        // 3. System TTS Fallback (for English or when system engine is explicitly chosen)
         if (!isInitialized || tts == null) {
             onDone()
             return
@@ -152,8 +172,8 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
             engine.language = Locale.US
         }
 
-        engine.setSpeechRate(speechRate.coerceIn(0.5f, 2.0f))
-        engine.setPitch(speechPitch.coerceIn(0.5f, 2.0f))
+        engine.setSpeechRate(prefs.speechRate.coerceIn(0.5f, 2.0f))
+        engine.setPitch(prefs.speechPitch.coerceIn(0.5f, 2.0f))
 
         val utteranceId = UUID.randomUUID().toString()
         engine.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
@@ -175,7 +195,19 @@ class TextToSpeechHelper(private val context: Context) : TextToSpeech.OnInitList
         }
     }
 
+    /**
+     * Apply speech rate/pitch to system TTS engine (for system engine mode).
+     */
+    fun applySpeechParameters(rate: Float, pitch: Float) {
+        try {
+            tts.setSpeechRate(rate.coerceIn(0.6f, 1.6f))
+            tts.setPitch(pitch.coerceIn(0.7f, 1.5f))
+        } catch (_: Exception) {
+        }
+    }
+
     fun stop() {
+        geminiClient.stop()
         embeddedEngine.stop()
         tts?.stop()
         _isSpeaking.value = false

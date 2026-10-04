@@ -113,6 +113,10 @@ fun SettingsScreen(
     var speechRate by remember { mutableFloatStateOf(prefs.speechRate) }
     var speechPitch by remember { mutableFloatStateOf(prefs.speechPitch) }
     var systemPrompt by remember { mutableStateOf(prefs.systemPrompt) }
+    var ttsEngine by remember { mutableStateOf(prefs.ttsEngineType) }
+    var geminiApiKey by remember { mutableStateOf(prefs.geminiApiKey) }
+    var isGeminiKeyVisible by remember { mutableStateOf(false) }
+    var geminiVoice by remember { mutableStateOf(prefs.geminiVoice) }
 
     val hasPersianVoice by ttsHelper.hasPersianVoice.collectAsState()
 
@@ -438,6 +442,117 @@ fun SettingsScreen(
                 Icon(imageVector = Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("تنظیمات موتور صوتی گوگل (دانلود دیتای فارسی)", fontSize = 12.sp)
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DarkBorder)
+
+            // TTS ENGINE SELECTOR — Gemini / Neural / System
+            Text(text = "موتور تولید صدای فارسی:", color = TextSecondary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val engines = listOf(
+                    "gemini" to "🧬 جِمینای (طبیعی)",
+                    "neural" to "⚡ نِمو آفلاین",
+                    "system" to "🔉 سیستم گوشی"
+                )
+                engines.forEach { (code, label) ->
+                    val isSelected = (ttsEngine == code)
+                    Surface(
+                        onClick = {
+                            ttsEngine = code
+                            prefs.ttsEngineType = code
+                        },
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)),
+                        color = if (isSelected) NvidiaGreen else DarkSurfaceElevated,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaNeon else DarkBorder)
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) DarkBackground else TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (ttsEngine == "gemini") {
+                OutlinedTextField(
+                    value = geminiApiKey,
+                    onValueChange = {
+                        geminiApiKey = it
+                        prefs.geminiApiKey = it
+                    },
+                    label = { Text("کلید API گوگل جِمینای (AIza...)", fontSize = 12.sp) },
+                    singleLine = true,
+                    visualTransformation = if (isGeminiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { isGeminiKeyVisible = !isGeminiKeyVisible }) {
+                            Icon(
+                                imageVector = if (isGeminiKeyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = NvidiaGreen,
+                        unfocusedBorderColor = DarkBorder,
+                        focusedLabelColor = NvidiaGreen,
+                        unfocusedLabelColor = TextSecondary,
+                        cursorColor = NvidiaGreen
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "رایگان از Google AI Studio: aistudio.google.com/apikey — مدل‌های Gemini طبیعی‌ترین و حرفه‌ای‌ترین صدای فارسی را با لحن و درنگ طبیعی تولید می‌کنند.",
+                    color = TextMuted,
+                    fontSize = 10.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Gemini Voice Selector
+                Text(text = "صدای جِمینای:", color = TextSecondary, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val voices = listOf("Aoede" to "Aoede (زنانه)", "Charon" to "Charon (مردانه)", "Fenrir" to "Fenrir", "Kore" to "Kore", "Puck" to "Puck")
+                    voices.forEach { (code, label) ->
+                        val isSelected = (geminiVoice == code)
+                        Surface(
+                            onClick = {
+                                geminiVoice = code
+                                prefs.geminiVoice = code
+                            },
+                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)),
+                            color = if (isSelected) NvidiaGreen else DarkSurfaceElevated,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) NvidiaNeon else DarkBorder)
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) DarkBackground else TextPrimary,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 7.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DarkBorder)

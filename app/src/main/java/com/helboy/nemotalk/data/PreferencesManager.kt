@@ -10,6 +10,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getString(KEY_API_KEY, "") ?: ""
         set(value) = prefs.edit().putString(KEY_API_KEY, value.trim()).apply()
 
+    var geminiApiKey: String
+        get() = prefs.getString(KEY_GEMINI_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_GEMINI_API_KEY, value.trim()).apply()
+
     var selectedModel: String
         get() = prefs.getString(KEY_MODEL, "nvidia/nemotron-4-340b-instruct") ?: "nvidia/nemotron-4-340b-instruct"
         set(value) = prefs.edit().putString(KEY_MODEL, value).apply()
@@ -17,6 +21,14 @@ class PreferencesManager(context: Context) {
     var responseLanguage: String
         get() = prefs.getString(KEY_RESPONSE_LANG, "fa") ?: "fa"
         set(value) = prefs.edit().putString(KEY_RESPONSE_LANG, value).apply()
+
+    var ttsEngineType: String
+        get() = prefs.getString(KEY_TTS_ENGINE, "gemini") ?: "gemini"
+        set(value) = prefs.edit().putString(KEY_TTS_ENGINE, value).apply()
+
+    var geminiVoice: String
+        get() = prefs.getString(KEY_GEMINI_VOICE, "Aoede") ?: "Aoede"
+        set(value) = prefs.edit().putString(KEY_GEMINI_VOICE, value).apply()
 
     var systemPrompt: String
         get() = prefs.getString(
@@ -43,8 +55,11 @@ class PreferencesManager(context: Context) {
 
     companion object {
         private const val KEY_API_KEY = "key_api_key"
+        private const val KEY_GEMINI_API_KEY = "key_gemini_api_key"
         private const val KEY_MODEL = "key_model"
         private const val KEY_RESPONSE_LANG = "key_response_lang"
+        private const val KEY_TTS_ENGINE = "key_tts_engine"
+        private const val KEY_GEMINI_VOICE = "key_gemini_voice"
         private const val KEY_SYSTEM_PROMPT = "key_system_prompt"
         private const val KEY_AUTO_SPEAK = "key_auto_speak"
         private const val KEY_SPEECH_LANG = "key_speech_lang"

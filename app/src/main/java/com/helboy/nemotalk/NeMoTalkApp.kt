@@ -131,8 +131,7 @@ fun NeMoTalkApp() {
                         currentlySpeakingId = aiMessage.id
                         ttsHelper.speak(
                             text = aiText,
-                            speechRate = prefs.speechRate,
-                            speechPitch = prefs.speechPitch,
+                            prefs = prefs,
                             forcePersian = (prefs.responseLanguage == "fa" || ttsHelper.containsPersianCharacters(aiText)),
                             onDone = {
                                 currentlySpeakingId = null
@@ -224,8 +223,7 @@ fun NeMoTalkApp() {
                             currentlySpeakingId = msg.id
                             ttsHelper.speak(
                                 text = msg.content,
-                                speechRate = prefs.speechRate,
-                                speechPitch = prefs.speechPitch,
+                                prefs = prefs,
                                 forcePersian = (prefs.responseLanguage == "fa" || ttsHelper.containsPersianCharacters(msg.content)),
                                 onDone = { currentlySpeakingId = null }
                             )
